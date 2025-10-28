@@ -127,7 +127,7 @@ debias_ivx <- function(
     # Three rows: frequency of 0s, L1 norm of std/nonstd.
     phi_hat <- matrix(NA, 3, p_focal)
 
-    w_joint <- w[-1, d_ind]
+    w_joint <- w[-1, d_ind, drop = FALSE]
     r_joint  <- matrix(NA, nrow(w_joint), p_focal)
 
     for (i in 1:p_focal) {
@@ -158,16 +158,6 @@ debias_ivx <- function(
         )
 
         # # Generate debiased estimates
-        # if (iid) {
-        #     theta_hat_ivx[i] <- theta_hat_las[i] + (sum(r_hat * u_hat[-1]) ) / sum(r_hat * d[-1])
-        # } else {
-        #     lrcov_du <- lrcov_est(u_hat[-1], diff(d), type = 1) # one-sided long-run covariance
-        #     theta_hat_ivx[i] <- theta_hat_las[i] + (sum(r_hat * u_hat[-1]) - (n * lrcov_du)) / sum(r_hat * d[-1])
-        # }
-
-        # s.e. and t statistics
-        # omega_uu <- lrcov_est(u_hat, type = 0) # long-run covariance
-
         if (se_type == "iid") {
             theta_hat_ivx[i] <- theta_hat_las[i] + (sum(r_hat * u_hat[-1]) ) / sum(r_hat * d[-1])
             omega_uu  <- mean(u_hat^2)
