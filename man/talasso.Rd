@@ -4,14 +4,14 @@
 \alias{talasso}
 \title{Implement repeated Lasso estimation}
 \usage{
-talasso(x, y, b.first, lambda, gamma = 1, intercept = TRUE, scalex = FALSE)
+talasso(x, y, b_first, lambda, gamma = 1, intercept = TRUE, scale_x = FALSE)
 }
 \arguments{
 \item{x}{Predictor matrix (n-by-p matrix)}
 
 \item{y}{Response variable}
 
-\item{b.first}{First step adaptive lasso estimates}
+\item{b_first}{First step adaptive lasso estimates}
 
 \item{lambda}{Shrinkage tuning parameter}
 
@@ -19,7 +19,7 @@ talasso(x, y, b.first, lambda, gamma = 1, intercept = TRUE, scalex = FALSE)
 
 \item{intercept}{A boolean: include an intercept term or not}
 
-\item{scalex}{A boolean: standardize the design matrix or not}
+\item{scale_x}{A boolean: standardize the design matrix or not}
 }
 \value{
 A list contains estimated intercept and slope
@@ -30,5 +30,11 @@ A list contains estimated intercept and slope
 Estimation function. Tuning parameter inputs needed. First step adalasso estimate needed.\cr
 }
 \examples{
-talasso(x,y, b.first,lambda)
+\dontrun{
+x <- matrix(rnorm(50 * 5), 50, 5)
+y <- rnorm(50)
+b_first <- rnorm(5)
+talasso(x, y, b_first, lambda = 0.1)
 }
+}
+\keyword{internal}

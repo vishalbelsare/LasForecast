@@ -5,7 +5,7 @@
 \title{Implement weighted Lasso estimation (second step of adaptive lasso) via coordinate descent
 for the case in which only one predictor remains}
 \usage{
-lasso_weight_single(x, y, lambda, w = NULL, intercept = TRUE, scalex = FALSE)
+lasso_weight_single(x, y, lambda, w = NULL, intercept = TRUE, scale_x = FALSE)
 }
 \arguments{
 \item{x}{Predictor matrix (n-by-p matrix)}
@@ -18,7 +18,7 @@ lasso_weight_single(x, y, lambda, w = NULL, intercept = TRUE, scalex = FALSE)
 
 \item{intercept}{A boolean: include an intercept term or not}
 
-\item{scalex}{A boolean: standardize the design matrix or not}
+\item{scale_x}{A boolean: standardize the design matrix or not}
 }
 \value{
 A list contains estimated intercept and slope

@@ -7,9 +7,11 @@
 lrcov_est(x, y = NULL, type = 0)
 }
 \arguments{
-\item{y}{= NULL if computing the long run variance of x only}
+\item{x}{A numeric matrix or vector}
 
-\item{type}{= 0 (default) for long-run covariance or 1 for one-sided long-run variance}
+\item{y}{A numeric matrix or vector (optional)}
+
+\item{type}{Integer 0 or 1. 0 for long-run covariance, 1 for one-sided.}
 }
 \description{
 Use bartlett kernel to estimate long-run covariance where the bandwidth
@@ -17,3 +19,4 @@ determined Andrews (1991, Eq. (6.2) and (6.4)).
 Part of the function adapted from the "bwAndrews" function in
 "sandwich" package
 }
+\keyword{internal}

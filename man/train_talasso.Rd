@@ -9,8 +9,9 @@ train_talasso(
   y,
   b_first,
   gamma = 1,
+  model = NULL,
   intercept = TRUE,
-  scalex = FALSE,
+  scale_x = FALSE,
   train_method = "timeslice",
   lambda_seq = NULL,
   nlambda = 100,
@@ -31,37 +32,52 @@ train_talasso(
 
 \item{gamma}{Parameter controlling the inverse of first step estimate. By default = 1.}
 
+\item{model}{Ignored. The second-step initial estimator is always OLS,
+because the first-step-selected set is low-dimensional by construction and
+talasso() builds its weights from the OLS fit. Retained for interface
+compatibility with \code{train_lasso}.}
+
 \item{intercept}{A boolean: include an intercept term or not}
 
-\item{scalex}{A boolean: standardize the design matrix or not}
+\item{scale_x}{A boolean: standardize the design matrix or not}
 
 \item{train_method}{"timeslice", "cv",  "aic", "bic", "aicc", "hqc"}
 
 \item{lambda_seq}{Candidate sequnece of parameters. If NULL, the function generates the sequnce.}
 
-\item{nlambda}{# of lambdas}
+\item{nlambda}{Number of candidate lambda values (default 100).}
 
-\item{lambda_min_ratio}{# lambda_min_ratio * lambda_max = lambda_min}
+\item{lambda_min_ratio}{Ratio determining the smallest lambda:
+\code{lambda_min = lambda_min_ratio * lambda_max} (default 0.0001).}
 
-\item{k}{k-fold cv if "cv" is chosen}
+\item{k}{Number of folds for \code{"cv"} and \code{"cv_random"} methods
+(default 10).}
 
-\item{initial_window}{control "timeslice"}
+\item{initial_window}{Size of the first training set for \code{"timeslice"}
+(default: 70\% of \eqn{n}).}
 
-\item{horizon}{control "timeslice"}
+\item{horizon}{Number of periods in each validation set for
+\code{"timeslice"} (default 1).}
 
-\item{fixed_window}{control "timeslice"}
+\item{fixed_window}{Logical. If \code{TRUE} (default), the training window
+rolls forward at fixed size; if \code{FALSE}, it expands.}
 
-\item{skip}{control "timeslice"}
+\item{skip}{Number of periods to skip between successive splits in
+\code{"timeslice"} (default 0).}
 }
 \value{
-bestTune
+The selected lambda value (numeric scalar).
 }
 \description{
-If all variables are killed in the first step: return a random number\cr
+If all variables are killed in the first step: return NA\cr
 If more than 1 variables are left: just repeat the training process for alasso\cr
 If only 1 variable remained: use a brute-force process do the cross-validation.\cr
-FOR FUTURE WORK: INCORPORATE TALASSO INTO CARET FRAMEWORK.
 }
 \examples{
-train_talasso(x,y)
+\dontrun{
+x <- matrix(rnorm(50 * 5), 50, 5)
+y <- rnorm(50)
+b_first <- rnorm(5)
+train_talasso(x, y, b_first = b_first)
+}
 }

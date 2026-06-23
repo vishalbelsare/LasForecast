@@ -7,7 +7,11 @@
 get_lambda_seq(lambda_max, lambda_min_ratio = 1e-04, nlambda = 100)
 }
 \arguments{
-\item{nlambda}{}
+\item{lambda_max}{Max lambda}
+
+\item{lambda_min_ratio}{Ratio}
+
+\item{nlambda}{Number of lambdas}
 }
 \value{
 lambda_seq
@@ -15,3 +19,4 @@ lambda_seq
 \description{
 Get the lambda sequence
 }
+\keyword{internal}

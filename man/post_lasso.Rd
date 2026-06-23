@@ -4,16 +4,18 @@
 \alias{post_lasso}
 \title{post-selection estimation}
 \usage{
-post_lasso(x, y, coef.est, intercept = TRUE, scalex = FALSE)
+post_lasso(x, y, coef_est, intercept = TRUE, scale_x = FALSE)
 }
 \arguments{
 \item{x}{Predictor matrix (n-by-p matrix)}
 
 \item{y}{Response variable}
 
-\item{coef.est}{shrinkage estimation results}
+\item{coef_est}{shrinkage estimation results}
 
 \item{intercept}{A boolean: include an intercept term or not}
+
+\item{scale_x}{A boolean: standardize the design matrix or not}
 }
 \value{
 A list contains estimated intercept and slope
@@ -24,6 +26,12 @@ A list contains estimated intercept and slope
 post-selection estimation
 }
 \examples{
-post_lasso(x,y,coef.est)
+\dontrun{
+x <- matrix(rnorm(50 * 5), 50, 5)
+y <- rnorm(50)
+coef_est <- c(0, 1, 0, 0, -0.5, 0)
+post_lasso(x, y, coef_est)
+}
 
 }
+\keyword{internal}

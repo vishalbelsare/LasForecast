@@ -1,9 +1,3 @@
-.Rproj.user
-.Rhistory
-.RData
-.Ruserdata
-inst/doc
-LasForecast.Rcheck/
-LasForecast*.tar.gz
-LasForecast*.tgz
-test/*
+docs
+/doc/
+/Meta/

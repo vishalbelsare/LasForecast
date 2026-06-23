@@ -1,40 +1,49 @@
 Package: LasForecast
-Title: Time series linear predictive regression
-Version: 0.0.0.9000
+Title: Lasso for Predictive Regressions
+Version: 1.0.0
 Authors@R: c(
-    person("Zhan", "Gao", email = "zhangao@usc.edu", role = c("aut", "cre")),
-    person("Zhentao", "Shi", email = "zhentaoshi@cuhk.edu.hk", role = "aut"))
-Description: This package develops a framework for economic forecasting in a data-rich environment with a particular emphasis on linear predictive regression. The goal is to automate the processes of parameter tuning, rolling window forecasting and backtesting, and visualization in a unified framework.
-Depends: 
-    R (>= 3.5.2),
-    glmnet,
-    slam
-License: MIT
+    person("Zhan", "Gao", email = "zhangao@smu.edu", role = c("aut", "cre")),
+    person("Zhentao", "Shi", email = "zhentaoshi@cuhk.edu.hk", role = "aut"),
+    person("Ziwei", "Mei", email = "ziweimei@um.edu.mo", role = "aut"),
+    person("Zihao", "Yin", email = "zihaoy@smu.edu", role = "ctb"))
+Description: Provides a framework of Lasso for 
+    predictive regressions in data-rich environments, automating parameter
+    tuning, model estimation, rolling-window forecasting, backtesting, and
+    visualization. It implements Lasso-type estimators tailored to predictive
+    regressions with persistent and mixed-root regressors, including the plain,
+    adaptive, and twin adaptive Lasso of Lee, Shi and Gao (2022)
+    <doi:10.1016/j.jeconom.2021.02.002>, the standardized Lasso of Mei and Shi
+    (2024) <doi:10.1016/j.jeconom.2024.105809>, and the IVX-desparsified Lasso
+    of Gao, Lee, Mei and Shi (2026) <doi:10.1016/j.jeconom.2026.106240> for
+    valid inference under both shrinkage and Stambaugh bias. 
+Depends:
+    R (>= 3.5.2)
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
-Imports: 
+Imports:
+    glmnet,
     ggplot2,
-    caret,
-    Matrix,
     lubridate,
     zoo,
-    reshape2,
-    CVXR,
-    SparseM,
-    tseries,
-    urca,
     sandwich,
-    mvtnorm,
-    abind,
-    dplyr
+    dplyr,
+    tsibble,
+    tidyr,
+    rlang,
+    scales,
+    methods,
+    Matrix
 Suggests:
-    Rmosek,
     doParallel,
+    patchwork,
     parallel,
     foreach,
-    dplyr,
     knitr,
     rmarkdown,
+    quarto,
+    testthat,
     gurobi
-RoxygenNote: 7.3.2
-VignetteBuilder: knitr
+RoxygenNote: 7.3.3
+VignetteBuilder: quarto
+URL: https://zhan-gao.github.io/LasForecast/

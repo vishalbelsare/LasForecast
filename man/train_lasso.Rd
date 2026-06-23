@@ -2,15 +2,18 @@
 % Please edit documentation in R/train.R
 \name{train_lasso}
 \alias{train_lasso}
-\title{Do parameter tuning for Lasso and Adaptive lasso}
+\title{Tuning parameter selection for LASSO}
 \usage{
 train_lasso(
   x,
   y,
   ada = TRUE,
   gamma = 1,
+  model = NULL,
+  lambda_init = NULL,
+  alpha = 1,
   intercept = TRUE,
-  scalex = FALSE,
+  scale_x = FALSE,
   lambda_seq = NULL,
   train_method = "timeslice",
   nlambda = 100,
@@ -23,49 +26,97 @@ train_lasso(
 )
 }
 \arguments{
-\item{x}{Predictor matrix (n-by-p matrix)}
+\item{x}{Predictor matrix (\eqn{n \times p}).}
 
-\item{y}{Response variable}
+\item{y}{Response vector (length \eqn{n}).}
 
-\item{ada}{A boolean: Do parameter tuning for adaptive Lasso if TRUE (Default) For Lasso if FALSE.}
+\item{ada}{Logical. If \code{TRUE} (default), tune for Adaptive LASSO;
+if \code{FALSE}, tune for standard LASSO.}
 
-\item{gamma}{Parameter controlling the inverse of first step estimate. By default = 1.}
+\item{gamma}{Exponent for adaptive penalty weights
+\eqn{\hat\tau_j = |\hat\theta_j^{init}|^{-\gamma}}. Default 1.}
 
-\item{intercept}{A boolean: include an intercept term or not}
+\item{model}{Initial estimator for adaptive weights: \code{"lasso"},
+\code{"ridge"}, or \code{"ols"}. Default \code{NULL} auto-selects
+based on dimensionality (\eqn{n} vs \eqn{p}).}
 
-\item{scalex}{A boolean: standardize the design matrix or not}
+\item{lambda_init}{Penalty for the Lasso/ridge \emph{initial} estimator
+generating the adaptive weights when \code{ada = TRUE}. Default
+\code{NULL}: tuned internally by 10-fold block CV. Ignored when
+\code{ada = FALSE} or the initial estimator is OLS.}
 
-\item{lambda_seq}{Candidate sequnece of parameters. If NULL, the function generates the sequnce.}
+\item{alpha}{Elastic-net mixing parameter passed to \code{glmnet}.
+Use 1 for LASSO (default) and 0 for ridge.}
 
-\item{train_method}{"timeslice", "cv", "cv_random", "aic", "bic", "aicc", "hqc"
-"timeslice": https://topepo.github.io/caret/data-splitting.html#time
-    By combining initial window, horizon, fixed window and skip, we can control the sample splitting.
-    Roll_block: Setting initial_window = horizon = floor(nrow(x) / k), fixed_window = False, and skip = floor(nrow(x) / k) - 1
-    Period-by-period rolling: skip = 0. 
-"cv": Cross-validation based on block splits.
-"cv_random": Cross-validition based on random splits.
-"aic", "bic", "aicc", "hqc": based on information criterion.}
+\item{intercept}{Logical. Include an intercept term (default \code{TRUE}).}
 
-\item{nlambda}{# of lambdas}
+\item{scale_x}{Logical. Standardize predictors before fitting (default \code{FALSE}).}
 
-\item{lambda_min_ratio}{# lambda_min_ratio * lambda_max = lambda_min}
+\item{lambda_seq}{Candidate sequence of lambda values. If \code{NULL}
+(default), the function generates the sequence automatically.}
 
-\item{k}{k-fold cv if "cv" is chosen}
+\item{train_method}{Tuning parameter selection method. One of:
+  \describe{
+    \item{\code{"cv"}}{Block cross-validation. Splits the sample into \code{k}
+      contiguous blocks; each block serves as the validation fold in turn.
+      \preformatted{
+ Iter 1: train train train train  val
+ Iter 2: train train train  val  train
+ Iter 3: train train  val  train train
+      }}
+    \item{\code{"cv_random"}}{Random cross-validation. Assigns observations to
+      \code{k} folds randomly, ignoring temporal order. Appropriate only when
+      serial dependence is weak.}
+    \item{\code{"timeslice"}}{Time-series cross-validation. Training always uses
+      past data; validation uses future data. Controlled by \code{initial_window},
+      \code{horizon}, \code{fixed_window}, and \code{skip}.
+      \preformatted{
+ Rolling (fixed_window = TRUE):
+ Iter 1: ===train===|=val=|
+ Iter 2:   ===train===|=val=|
+ Iter 3:     ===train===|=val=|
 
-\item{initial_window}{control "timeslice"}
+ Expanding (fixed_window = FALSE):
+ Iter 1: ===train===|=val=|
+ Iter 2: ====train====|=val=|
+ Iter 3: =====train=====|=val=|
+      }}
+    \item{\code{"aic"}, \code{"bic"}, \code{"aicc"}, \code{"hqc"}}{Information
+      criterion. Fits the model along the full lambda path and selects the lambda
+      minimizing the chosen criterion. Fast; no sample splitting required.}
+  }}
 
-\item{horizon}{control "timeslice"}
+\item{nlambda}{Number of candidate lambda values (default 100).}
 
-\item{fixed_window}{control "timeslice"}
+\item{lambda_min_ratio}{Ratio determining the smallest lambda:
+\code{lambda_min = lambda_min_ratio * lambda_max} (default 0.0001).}
 
-\item{skip}{control "timeslice"}
+\item{k}{Number of folds for \code{"cv"} and \code{"cv_random"} methods
+(default 10).}
+
+\item{initial_window}{Size of the first training set for \code{"timeslice"}
+(default: 70\% of \eqn{n}).}
+
+\item{horizon}{Number of periods in each validation set for
+\code{"timeslice"} (default 1).}
+
+\item{fixed_window}{Logical. If \code{TRUE} (default), the training window
+rolls forward at fixed size; if \code{FALSE}, it expands.}
+
+\item{skip}{Number of periods to skip between successive splits in
+\code{"timeslice"} (default 0).}
 }
 \value{
-bestTune
+The selected lambda value (numeric scalar).
 }
 \description{
-Do parameter tuning for Lasso and Adaptive lasso
+Selects the penalty parameter lambda for LASSO or Adaptive LASSO
+via cross-validation, time-series CV, or information criteria.
 }
 \examples{
-train_lasso(x,y)
+\dontrun{
+x <- matrix(rnorm(50 * 5), 50, 5)
+y <- rnorm(50)
+train_lasso(x, y)
+}
 }

@@ -11,10 +11,8 @@ debias_ivx(
   intercept = FALSE,
   standardize = TRUE,
   c_z = 5,
-  a = 0.9,
+  a = 0.5,
   standardize_iv = TRUE,
-  iid = TRUE,
-  post_inference = TRUE,
   lambda_choice = vector("list", length(d_ind) + 1),
   lambda_seq = vector("list", length(d_ind) + 1),
   train_method = "timeslice",
@@ -25,7 +23,10 @@ debias_ivx(
   horizon = 1,
   fixed_window = TRUE,
   skip = 0,
-  zhang_zhang = TRUE
+  se_type = "iid",
+  joint_test = FALSE,
+  R_mat = diag(length(d_ind)),
+  q_vec = rep(0, length(d_ind))
 )
 }
 \arguments{
@@ -37,15 +38,13 @@ debias_ivx(
 
 \item{intercept}{Whether to include intercept in Lasso regression}
 
+\item{standardize}{Whether to standardize the variables}
+
 \item{c_z}{Parameter in constructing IV (Phillips and Lee, 2016) \deqn{z = \sum_{j=0}^{n-1} (1 - c_z / n^a)^j \Delta d_{t-j}}}
 
 \item{a}{Parameter in constructing IV (Phillips and Lee, 2016)}
 
 \item{standardize_iv}{Whether to standardize the IV}
-
-\item{iid}{boolean indicating whether we want to adjust the long-run variance}
-
-\item{post_inference}{boolean indicating whether to conduct post-lasso inference}
 
 \item{lambda_choice}{Choice of lambda for Lasso regression; List of length length(d_ind) + 1: each element = NULL or = a number if user has a specific choice of tuning parameter}
 
@@ -53,13 +52,13 @@ debias_ivx(
 
 \item{train_method}{The parameter tuning method
 \itemize{
- \item{"timeslice"}{https://topepo.github.io/caret/data-splitting.html#time}:
+ \item \code{"timeslice"}: Time-slice cross-validation.
      By combining initial window, horizon, fixed window and skip, we can control the sample splitting.
-     Roll_block: Setting initial_window = horizon = floor(nrow(x) / k), fixed_window = False, and skip = floor(nrow(x) / k) - 1
-     Period-by-period rolling: skip = 0. 
- \item "cv": Cross-validation based on block splits.
- \item "cv_random": Cross-validition based on random splits.
- \item "aic", "bic", "aicc", "hqc": based on information criterion.
+     Roll_block: Setting initial_window = horizon = floor(nrow(x) / k), fixed_window = False, and skip = floor(nrow(x) / k) - 1.
+     Period-by-period rolling: skip = 0.
+ \item \code{"cv"}: Cross-validation based on block splits.
+ \item \code{"cv_random"}: Cross-validation based on random splits.
+ \item \code{"aic"}, \code{"bic"}, \code{"aicc"}, \code{"hqc"}: based on information criterion.
  }}
 
 \item{nlambda}{number of candidate lambdas}
@@ -76,7 +75,18 @@ debias_ivx(
 
 \item{skip}{length of skip for "timeslice" method}
 
-\item{zhangzhang}{boolean indicating whether to conduct Zhang and Zhang (2014) debiased IVX}
+\item{se_type}{type of standard error estimation
+\itemize{
+ \item "iid": iid standard error
+ \item "robust": robust standard error
+ \item "HAC": HAC standard error
+ }}
+
+\item{joint_test}{boolean indicating whether to conduct a joint Wald test}
+
+\item{R_mat}{restriction matrix for joint test}
+
+\item{q_vec}{restriction vector for joint test}
 }
 \value{
 A list contains

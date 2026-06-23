@@ -25,6 +25,39 @@ fit_lasso(
 \item{w}{Matrix of all regressors}
 
 \item{y}{Vector of dependent variable}
+
+\item{intercept}{Whether to include intercept in Lasso regression}
+
+\item{standardize}{Whether to standardize the variables}
+
+\item{lambda_choice}{Choice of lambda for Lasso regression; List of length length(d_ind) + 1: each element = NULL or = a number if user has a specific choice of tuning parameter}
+
+\item{lambda_seq}{pre-specified sequence of tuning parameter for parameter tuning; Useful in calibration of tuning parameter based on the rate conditions in the asymptotic theory; List of length length(d_ind) + 1: Each element = NULL or a vector of tuning parameters}
+
+\item{train_method}{The parameter tuning method
+\itemize{
+ \item \code{"timeslice"}: Time-slice cross-validation.
+     By combining initial window, horizon, fixed window and skip, we can control the sample splitting.
+     Roll_block: Setting initial_window = horizon = floor(nrow(x) / k), fixed_window = False, and skip = floor(nrow(x) / k) - 1.
+     Period-by-period rolling: skip = 0.
+ \item \code{"cv"}: Cross-validation based on block splits.
+ \item \code{"cv_random"}: Cross-validation based on random splits.
+ \item \code{"aic"}, \code{"bic"}, \code{"aicc"}, \code{"hqc"}: based on information criterion.
+ }}
+
+\item{nlambda}{number of candidate lambdas}
+
+\item{lambda_min_ratio}{# lambda_min_ratio * lambda_max = lambda_min (default: 0.0001): Determines the search range of lambda}
+
+\item{k}{k-fold cv if "cv" is chosen (default: 10)}
+
+\item{initial_window}{length of initial window for "timeslice" method}
+
+\item{horizon}{length of horizon for "timeslice" method}
+
+\item{fixed_window}{whether to use fixed window for "timeslice" method}
+
+\item{skip}{length of skip for "timeslice" method}
 }
 \value{
 coefficients of Lasso regression and residuals
@@ -32,3 +65,4 @@ coefficients of Lasso regression and residuals
 \description{
 Run Lasso estimation
 }
+\keyword{internal}

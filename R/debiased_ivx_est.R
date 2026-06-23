@@ -8,23 +8,21 @@
 #' @param y Vector of dependent variable
 #' @param d_ind Index for inference targets
 #' @param intercept Whether to include intercept in Lasso regression
-#' @param standardize
+#' @param standardize Whether to standardize the variables
 #' @param c_z Parameter in constructing IV (Phillips and Lee, 2016) \deqn{z = \sum_{j=0}^{n-1} (1 - c_z / n^a)^j \Delta d_{t-j}}
 #' @param a Parameter in constructing IV (Phillips and Lee, 2016)
 #' @param standardize_iv Whether to standardize the IV
-#' @param iid boolean indicating whether we want to adjust the long-run variance
-#' @param post_inference boolean indicating whether to conduct post-lasso inference
 #' @param lambda_choice Choice of lambda for Lasso regression; List of length length(d_ind) + 1: each element = NULL or = a number if user has a specific choice of tuning parameter
 #' @param lambda_seq pre-specified sequence of tuning parameter for parameter tuning; Useful in calibration of tuning parameter based on the rate conditions in the asymptotic theory; List of length length(d_ind) + 1: Each element = NULL or a vector of tuning parameters
 #' @param train_method The parameter tuning method
 #'     \itemize{
-#'      \item{"timeslice"}{https://topepo.github.io/caret/data-splitting.html#time}:
+#'      \item \code{"timeslice"}: Time-slice cross-validation.
 #'          By combining initial window, horizon, fixed window and skip, we can control the sample splitting.
-#'          Roll_block: Setting initial_window = horizon = floor(nrow(x) / k), fixed_window = False, and skip = floor(nrow(x) / k) - 1
+#'          Roll_block: Setting initial_window = horizon = floor(nrow(x) / k), fixed_window = False, and skip = floor(nrow(x) / k) - 1.
 #'          Period-by-period rolling: skip = 0.
-#'      \item "cv": Cross-validation based on block splits.
-#'      \item "cv_random": Cross-validition based on random splits.
-#'      \item "aic", "bic", "aicc", "hqc": based on information criterion.
+#'      \item \code{"cv"}: Cross-validation based on block splits.
+#'      \item \code{"cv_random"}: Cross-validation based on random splits.
+#'      \item \code{"aic"}, \code{"bic"}, \code{"aicc"}, \code{"hqc"}: based on information criterion.
 #'      }
 #' @param nlambda number of candidate lambdas
 #' @param lambda_min_ratio # lambda_min_ratio * lambda_max = lambda_min (default: 0.0001): Determines the search range of lambda
@@ -33,7 +31,9 @@
 #' @param horizon length of horizon for "timeslice" method
 #' @param fixed_window whether to use fixed window for "timeslice" method
 #' @param skip length of skip for "timeslice" method
-#' @param zhangzhang boolean indicating whether to conduct Zhang and Zhang (2014) debiased IVX
+#' @param joint_test boolean indicating whether to conduct a joint Wald test
+#' @param R_mat restriction matrix for joint test
+#' @param q_vec restriction vector for joint test
 #' @param se_type type of standard error estimation
 #'     \itemize{
 #'      \item "iid": iid standard error
@@ -52,32 +52,29 @@
 
 
 debias_ivx <- function(
-    w,
-    y,
-    d_ind,
-    intercept = FALSE,
-    standardize = TRUE,
-    c_z = 5,
-    a = 0.9,
-    standardize_iv = TRUE,
-    post_inference = TRUE,
-    lambda_choice = vector("list", length(d_ind) + 1),
-    lambda_seq = vector("list", length(d_ind) + 1),
-    train_method = "timeslice",
-    nlambda = 100,
-    lambda_min_ratio = 0.0001,
-    k = 10,
-    initial_window = ceiling(nrow(w)*0.7),
-    horizon = 1,
-    fixed_window = TRUE,
-    skip = 0,
-    zhang_zhang = TRUE,
-    se_type = "iid",
-    joint_test = FALSE,
-    R_mat = diag(length(d_ind)),
-    q_vec = rep(0, length(d_ind))
+  w,
+  y,
+  d_ind,
+  intercept = FALSE,
+  standardize = TRUE,
+  c_z = 5,
+  a = 0.5,
+  standardize_iv = TRUE,
+  lambda_choice = vector("list", length(d_ind) + 1),
+  lambda_seq = vector("list", length(d_ind) + 1),
+  train_method = "timeslice",
+  nlambda = 100,
+  lambda_min_ratio = 0.0001,
+  k = 10,
+  initial_window = ceiling(nrow(w) * 0.7),
+  horizon = 1,
+  fixed_window = TRUE,
+  skip = 0,
+  se_type = "iid",
+  joint_test = FALSE,
+  R_mat = diag(length(d_ind)),
+  q_vec = rep(0, length(d_ind))
 ) {
-
     n <- length(y)
     p_focal <- length(d_ind)
     p <- ncol(w)
@@ -87,7 +84,6 @@ debias_ivx <- function(
         standardize = standardize,
         train_method = train_method,
         nlambda = nlambda,
-
         lambda_min_ratio = lambda_min_ratio,
         k = k,
         initial_window = initial_window,
@@ -100,9 +96,9 @@ debias_ivx <- function(
     lambda_hat <- rep(NA, length(d_ind) + 1)
 
     # ---- Step 1: Lasso Regression y on w ------
-    lasso_result  <- do.call(
+    lasso_result <- do.call(
         fit_lasso,
-        c(list(w = w, y = y, lambda_choice = lambda_choice[[1]], lambda_seq = lambda_seq[[1]]),  fit_lasso_args)
+        c(list(w = w, y = y, lambda_choice = lambda_choice[[1]], lambda_seq = lambda_seq[[1]]), fit_lasso_args)
     )
     b_hat_las <- lasso_result$beta
     u_hat <- as.numeric(lasso_result$u)
@@ -118,17 +114,14 @@ debias_ivx <- function(
 
     # ---- Step 2: IVX ----------------------------
     theta_hat_ivx <- rep(NA, p_focal)
-    sigma_hat_ivx  <- rep(NA, p_focal)
+    sigma_hat_ivx <- rep(NA, p_focal)
 
-    # Container for Zhang and Zhang (2014)
-    theta_hat_zz <- rep(NA, p_focal)
-    sigma_hat_zz <- rep(NA, p_focal)
     # Container for second stage estimated coefficients
     # Three rows: frequency of 0s, L1 norm of std/nonstd.
     phi_hat <- matrix(NA, 3, p_focal)
 
     w_joint <- w[-1, d_ind, drop = FALSE]
-    r_joint  <- matrix(NA, nrow(w_joint), p_focal)
+    r_joint <- matrix(NA, nrow(w_joint), p_focal)
 
     for (i in 1:p_focal) {
         d <- w[, d_ind[i]]
@@ -140,7 +133,7 @@ debias_ivx <- function(
             z <- z / sd_n(z)
         }
 
-        w_z <- w[-1, -d_ind[i]]
+        w_z <- w[-1, -d_ind[i], drop = FALSE]
         lasso_result <- do.call(
             fit_lasso,
             c(list(w = w_z, y = z, lambda_choice = lambda_choice[[i + 1]], lambda_seq = lambda_seq[[i + 1]]), fit_lasso_args)
@@ -159,13 +152,13 @@ debias_ivx <- function(
 
         # # Generate debiased estimates
         if (se_type == "iid") {
-            theta_hat_ivx[i] <- theta_hat_las[i] + (sum(r_hat * u_hat[-1]) ) / sum(r_hat * d[-1])
-            omega_uu  <- mean(u_hat^2)
+            theta_hat_ivx[i] <- theta_hat_las[i] + (sum(r_hat * u_hat[-1])) / sum(r_hat * d[-1])
+            omega_uu <- mean(u_hat^2)
             sigma_hat_ivx[i] <- sqrt(
                 (omega_uu * sum(r_hat^2)) / (sum(r_hat * d[-1])^2)
             )
         } else if (se_type == "robust") {
-            theta_hat_ivx[i] <- theta_hat_las[i] + (sum(r_hat * u_hat[-1]) ) / sum(r_hat * d[-1])
+            theta_hat_ivx[i] <- theta_hat_las[i] + (sum(r_hat * u_hat[-1])) / sum(r_hat * d[-1])
             sigma_hat_ivx[i] <- sqrt(
                 sum((r_hat * u_hat[-1])^2) / (sum(r_hat * d[-1])^2)
             )
@@ -177,47 +170,39 @@ debias_ivx <- function(
                 (omega_uu * sum(r_hat^2)) / (sum(r_hat * d[-1])^2)
             )
         }
-
-        # s.e. and t statistics for Zhang and Zhang (2014)
-        if (zhang_zhang) {
-            lasso_result_zz <- do.call(
-                fit_lasso,
-                c(list(w = w_z, y = d[-1], lambda_choice = lambda_choice[[i + 1]], lambda_seq = lambda_seq[[i + 1]]), fit_lasso_args)
-            )
-            r_hat_zz <- as.numeric(lasso_result_zz$u)
-            theta_hat_zz[i] <- theta_hat_las[i] + (sum(r_hat_zz * u_hat[-1]) ) / sum(r_hat_zz * d[-1])
-            if (se_type == "iid") {
-                sigma_hat_zz[i] <- sqrt(
-                    (omega_uu * sum(r_hat_zz^2)) / (sum(r_hat_zz * d[-1])^2)
-                )
-            } else if (se_type == "robust") {
-                sigma_hat_zz[i] <- sqrt(
-                    sum((r_hat_zz * u_hat[-1])^2) / (sum(r_hat_zz * d[-1])^2)
-                )
-            } else {
-                lrcov_du_zz <- lrcov_est(u_hat[-1], diff(d), type = 1) # one-sided long-run covariance
-                omega_uu_zz <- lrcov_est(u_hat, type = 0) # long-run covariance
-                sigma_hat_zz[i] <- sqrt(
-                    (omega_uu_zz * sum(r_hat_zz^2)) / (sum(r_hat_zz * d[-1])^2)
-                )
-            }
-        }
     }
 
     if (joint_test == TRUE) {
+        # The joint covariance must follow the same convention as the marginal
+        # SE, so that for a single restriction the Wald statistic equals the
+        # squared t-statistic. Under se_type = "iid" (default) this is the
+        # homoskedastic form of eq. (2.19) in Gao et al. (2026),
+        # Omega_{j,k} = sigma_u^2 sum(r_j r_k) / (sum(r_j w_j) sum(r_k w_k));
+        # "robust" uses the heteroskedasticity-consistent sandwich; the HAC
+        # branch uses the long-run variance of u (matching its marginal SE).
+        omega_uu_joint <- if (se_type == "iid") {
+            mean(u_hat^2)
+        } else if (se_type == "robust") {
+            NULL
+        } else {
+            lrcov_est(u_hat, type = 0)
+        }
         cov_matrix <- matrix(NA, p_focal, p_focal)
         for (i in 1:p_focal) {
             for (j in 1:p_focal) {
-                cov_matrix[i, j] <- (
+                num <- if (se_type == "robust") {
                     sum(r_joint[, i] * r_joint[, j] * (u_hat[-1]^2))
-                ) / (
-                    sum(r_joint[, i] * w_joint[, i]) * sum(r_joint[, j] * w_joint[, j])
-                )
+                } else {
+                    omega_uu_joint * sum(r_joint[, i] * r_joint[, j])
+                }
+                cov_matrix[i, j] <- num /
+                    (sum(r_joint[, i] * w_joint[, i]) * sum(r_joint[, j] * w_joint[, j]))
             }
         }
         test_vec <- R_mat %*% as.matrix(theta_hat_ivx, ncol = 1) - q_vec
-        wald_stat <- as.numeric(t(test_vec) %*% solve(cov_matrix) %*% test_vec)
-        p_value_wald <- pchisq(wald_stat, df = p_focal, lower.tail = FALSE)
+        R_cov <- R_mat %*% cov_matrix %*% t(R_mat)
+        wald_stat <- as.numeric(t(test_vec) %*% solve(R_cov) %*% test_vec)
+        p_value_wald <- pchisq(wald_stat, df = nrow(R_mat), lower.tail = FALSE)
     } else {
         wald_stat <- NA
         p_value_wald <- NA
@@ -235,13 +220,6 @@ debias_ivx <- function(
         wald_stat = wald_stat,
         p_value_wald = p_value_wald
     )
-    if (zhang_zhang) {
-        output_list <- c(output_list, list(theta_hat_zz = theta_hat_zz, sigma_hat_zz = sigma_hat_zz))
-    }
-    if (post_inference) {
-        post_lasso_res <- post_lasso_inference(w, y, b_hat_las, d_ind, a = a, c_z = c_z)
-        output_list <- c(output_list, post_lasso_res)
-    }
 
     return(output_list)
 }
@@ -249,13 +227,21 @@ debias_ivx <- function(
 
 #' Self-generated IVs
 #'
-generate_iv  <- function(d, n, a, c_z = 5) {
+#' @param d Vector of regressor values
+#' @param n Sample size
+#' @param a Parameter in constructing IV
+#' @param c_z Parameter in constructing IV
+#'
+#' @return Instrumental variable vector of length n-1
+#'
+#' @keywords internal
+generate_iv <- function(d, n, a, c_z = 5) {
     delta_d <- c(0, diff(d))
     d_mat <- toeplitz(delta_d)
     d_mat[upper.tri(d_mat)] <- 0
-    const_mat <- (1 - (c_z / n^a))^matrix(0:(n-1), n, n, byrow = TRUE)
+    const_mat <- (1 - (c_z / n^a))^matrix(0:(n - 1), n, n, byrow = TRUE)
     const_mat[upper.tri(const_mat)] <- 0
-    z <- rowSums(const_mat * d_mat)[-1] #Dimension of Z is n - 1
+    z <- rowSums(const_mat * d_mat)[-1] # Dimension of Z is n - 1
 
     return(z)
 }
@@ -265,47 +251,38 @@ generate_iv  <- function(d, n, a, c_z = 5) {
 #'
 #' @param w Matrix of all regressors
 #' @param y Vector of dependent variable
-#' @param intercept
-#' @param standardize
-#' @inheritParams debias_ivx$lambda_choice
-#' @inheritParams debias_ivx$train_method
-#' @inheritParams debias_ivx$nlambda
-#' @inheritParams debias_ivx$lambda_min_ratio
-#' @inheritParams debias_ivx$k
-#' @inheritParams debias_ivx$initial_window
-#' @inheritParams debias_ivx$horizon
-#' @inheritParams debias_ivx$fixed_window
-#' @inheritParams debias_ivx$skip
+#' @param intercept Whether to include intercept in Lasso regression
+#' @param standardize Whether to standardize the variables
+#' @inheritParams debias_ivx
 #'
 #' @return coefficients of Lasso regression and residuals
 #'
-#' @export
+#' @keywords internal
 #'
 
 # Rewrite the function to avoid repeition of function calling.
 fit_lasso <- function(
-    w, y,
-    intercept = FALSE,
-    standardize = TRUE,
-    lambda_choice = NULL,
-    lambda_seq = NULL,
-    train_method = "timeslice",
-    nlambda = 100,
-    lambda_min_ratio = 0.0001,
-    k = 10,
-    initial_window = ceiling(nrow(w)*0.7),
-    horizon = 1,
-    fixed_window = TRUE,
-    skip = 0
+  w, y,
+  intercept = FALSE,
+  standardize = TRUE,
+  lambda_choice = NULL,
+  lambda_seq = NULL,
+  train_method = "timeslice",
+  nlambda = 100,
+  lambda_min_ratio = 0.0001,
+  k = 10,
+  initial_window = ceiling(nrow(w) * 0.7),
+  horizon = 1,
+  fixed_window = TRUE,
+  skip = 0
 ) {
-
     if (is.null(lambda_choice)) {
         train_arg <- list(
             x = w,
             y = y,
             ada = FALSE,
             intercept = intercept,
-            scalex = standardize,
+            scale_x = standardize,
             lambda_seq = lambda_seq,
             train_method = train_method,
             nlambda = nlambda,
@@ -321,86 +298,16 @@ fit_lasso <- function(
         lambda_lasso <- lambda_choice
     }
     result <- glmnet::glmnet(w,
-                             y,
-                             lambda = lambda_lasso,
-                             intercept = intercept,
-                             standardize = standardize)
+        y,
+        lambda = lambda_lasso,
+        intercept = intercept,
+        standardize = standardize
+    )
     b_hat_las <- result$beta
     u_hat <- y - w %*% b_hat_las - result$a0 # result$a0 = 0 if intercept = FALSE
 
     return(
         list(beta = b_hat_las, u = u_hat, lambda = lambda_lasso)
-    )
-}
-
-#' IVX inference and naive OLS
-#'
-#' @import AER sandwich
-#'
-#' @export
-ivx_inference <- function(w, y, a = 0.75, c_z = 5) {
-
-    p <- ncol(w)
-
-    n <- length(y)
-
-    z_mat  <- apply(w, 2, generate_iv, n = n, a = a, c_z = c_z)
-
-    iv_reg <- AER::ivreg(y[-1] ~ 0 + w[-1, ] | z_mat)
-    iv_se <- sqrt(diag(vcovHC(iv_reg, type = "HC1")))
-
-    lm_reg <- lm(y ~ 0 + w)
-    lm_se <- sqrt(diag(vcovHC(lm_reg, type = "HC1")))
-
-    return(
-        list(
-            iv_est = iv_reg$coefficients,
-            iv_se = iv_se,
-            lm_est = lm_reg$coefficients,
-            lm_se = lm_se
-        )
-    )
-}
-
-#' Post Lasso inference
-#'
-#' @export
-#'
-post_lasso_inference <- function(w, y, b_hat_las, d_ind, a = 0.75, c_z = 5) {
-
-    p <- ncol(w)
-    p_focal <- length(d_ind)
-
-
-    ind_sel_las <- as.logical(b_hat_las != 0)
-
-    theta_hat_ivx_post <- rep(NA, p_focal)
-    sigma_hat_ivx_post  <- rep(NA, p_focal)
-    theta_hat_ols_post <- rep(NA, p_focal)
-    sigma_hat_ols_post  <- rep(NA, p_focal)
-
-    for (i in 1:p_focal) {
-        ind_sel <- ind_sel_las
-        ind_sel[d_ind[i]] <- TRUE
-        ii <- cumsum(ind_sel)[d_ind[i]]
-        w_sel <- w[, ind_sel, drop = FALSE]
-
-        ivx_res_i <- ivx_inference(w_sel, y, a = a, c_z = c_z)
-
-        theta_hat_ivx_post[i] <- ivx_res_i$iv_est[ii]
-        sigma_hat_ivx_post[i] <- ivx_res_i$iv_se[ii]
-        theta_hat_ols_post[i] <- ivx_res_i$lm_est[ii]
-        sigma_hat_ols_post[i] <- ivx_res_i$lm_se[ii]
-
-    }
-
-    return(
-        list(
-            theta_hat_ivx_post = theta_hat_ivx_post,
-            sigma_hat_ivx_post = sigma_hat_ivx_post,
-            theta_hat_ols_post = theta_hat_ols_post,
-            sigma_hat_ols_post = sigma_hat_ols_post
-        )
     )
 }
 
