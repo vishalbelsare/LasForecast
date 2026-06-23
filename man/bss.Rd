@@ -2,23 +2,173 @@
 % Please edit documentation in R/bss.R
 \name{bss}
 \alias{bss}
-\title{Implement best subset selection via Mixed Integer Optimization (MIO)
-for given k}
+\title{Best Subset Selection for Predictive Regression}
 \usage{
 bss(
-  y,
-  X,
-  k,
+  x,
+  y = NULL,
+  k = NULL,
+  ic_type = c("bic", "aic", "aicc", "hqc"),
   intercept = TRUE,
-  b0 = NULL,
-  tau = 2,
-  tol = 1e-04,
-  MaxIter = 10000,
+  include_k0 = TRUE,
+  k_max = NULL,
+  predictive = NULL,
+  date_col = NULL,
+  a = 1,
   polish = TRUE,
-  time.limit = 1200
+  tol = 1e-04,
+  max_iter = 1000,
+  time_limit = 60,
+  verbose = FALSE,
+  ...
 )
 }
+\arguments{
+\item{x}{Predictor data: an \eqn{n \times p}{n x p} numeric matrix,
+data.frame, tibble, or tsibble. For data.frame/tibble/tsibble inputs,
+\code{y} can be a column name and date columns are auto-detected.}
+
+\item{y}{Response vector (length \eqn{n}), or a column name string
+when \code{x} is a data.frame/tibble/tsibble.}
+
+\item{k}{Candidate subset size(s). One of: \code{NULL} (default) --
+\eqn{k} is selected by \code{ic_type} over \eqn{0/1, \dots, k_{max}};
+an integer scalar in \code{0:p} -- the model with at most \eqn{k}
+active predictors is estimated directly (\code{k = 0} is the null
+model: the prevailing mean when \code{intercept = TRUE}, the zero
+forecast otherwise); or an integer vector (a subset of \code{0:p}) --
+\eqn{k} is selected by \code{ic_type} within that candidate set.}
+
+\item{ic_type}{Information criterion for subset size selection:
+\code{"bic"} (default), \code{"aic"}, \code{"aicc"}, or \code{"hqc"}.}
+
+\item{intercept}{Logical; include an (unpenalized) intercept
+(default \code{TRUE}).}
+
+\item{include_k0}{Logical; also consider \eqn{k = 0} (no predictors:
+the prevailing mean when \code{intercept = TRUE}, the zero forecast
+otherwise) in the information criterion comparison (default \code{TRUE}).
+Ignored when \code{k} is supplied.}
+
+\item{k_max}{Largest subset size searched when \code{k} is \code{NULL}.
+Default (and upper cap) \code{min(p, n - 1 - intercept)}, so the least
+squares fit on the selected subset keeps positive residual degrees of
+freedom and the information criteria remain well defined.}
+
+\item{predictive}{Logical. If \code{TRUE}, automatically lag-align the data
+so that row \eqn{t} pairs \eqn{y_t} with \eqn{x_{t-1}}. If \code{FALSE},
+the data is used as-is. Default \code{NULL} auto-detects: \code{TRUE}
+when date information is present, \code{FALSE} otherwise.}
+
+\item{date_col}{Optional date column name (for data.frame/tibble input).}
+
+\item{a}{Multiplier on the theory-guided bound radii (default 1). The
+MIO bounds are \eqn{|\beta_j| \le |\hat\beta_{OLS,j}| +
+a\sqrt{2(UB - g_{OLS})(X'X)^{-1}_{jj}}} when \eqn{p < n}, and
+\eqn{|\eta_i - y_i| \le a\sqrt{2 UB}},
+\eqn{\|\eta\|_1 \le \|y\|_1 + a\sqrt{2 n UB}} when \eqn{p \ge n}.
+\code{a = 1} gives the exact level-set bounds (the solution is provably
+never cut off); \code{a > 1} loosens them (still exact, possibly slower
+certification); \code{a < 1} tightens them beyond their provable level,
+which can speed up the solve but voids the exactness guarantee. No
+effect when the model is solved without finite bounds (singular
+\eqn{X'X}).}
+
+\item{polish}{Logical; re-fit the first-order solution by least squares on
+its active set before passing it to the MIO (default \code{TRUE}),
+as recommended in Section 3.2 of the paper.}
+
+\item{tol}{Convergence tolerance of the first-order algorithm on the
+objective (default \code{1e-4}, the value used in the paper).}
+
+\item{max_iter}{Maximum number of first-order iterations (default 1000).}
+
+\item{time_limit}{Gurobi time limit in seconds \emph{per MIO solve}
+(default 60). If the limit binds, the incumbent (best feasible) solution
+is used and a warning reports the remaining MIP gap. Proving optimality
+can be slow in the high-dimensional regime (\eqn{p \ge n}), where the
+exact formulation has weak relaxation bounds; the incumbent is
+typically optimal long before the certificate arrives (see Figure 2 of
+the paper).}
+
+\item{verbose}{Logical; print Gurobi solver output (default \code{FALSE}).}
+
+\item{...}{Additional arguments (ignored). Accepted for interface
+compatibility with the other estimators.}
+}
+\value{
+An object of class \code{"lasforecast_model"} (a list) with:
+  \describe{
+    \item{\code{fit}}{Estimation details: selected \code{k}, solver
+      \code{status}, \code{mipgap}, \code{objval}, and (when \code{k} is
+      selected by IC) the search path \code{ic_path}, a data.frame with
+      one row per candidate \eqn{k}.}
+    \item{\code{tuning_param}}{The selected subset size \eqn{\hat k}.}
+    \item{\code{coefficients}}{Numeric vector of estimated coefficients
+      (intercept first when \code{intercept = TRUE}).}
+    \item{\code{method}}{\code{"bss"}.}
+  }
+  S3 methods: \code{\link{predict.lasforecast_model}},
+  \code{\link[=print.lasforecast_model]{print}},
+  \code{\link[=coef.lasforecast_model]{coef}}.
+}
 \description{
-Implement best subset selection via Mixed Integer Optimization (MIO)
-for given k
+Computes the best subset selection estimator
+\deqn{\min_\beta \frac{1}{2}\|y - X\beta\|_2^2 \quad \text{s.t.} \quad
+  \|\beta\|_0 \le k}
+by mixed integer optimization (MIO) with the Gurobi solver, following
+Bertsimas, King, and Mazumder (2016). For each subset size the MIO is
+warm-started by a discrete first-order algorithm (their Algorithm 2 with
+polishing). The overdetermined case \eqn{p < n} uses their formulation
+(2.5) (quadratic in \eqn{p} variables); the high-dimensional case
+\eqn{p \ge n} uses formulation (2.6) (quadratic in \eqn{n} variables).
+}
+\details{
+When \code{k} is \code{NULL} (default), the subset size is selected by
+information criterion over \eqn{k = 1, \dots, k_{max}} (and \eqn{k = 0},
+the intercept-only model, when \code{include_k0 = TRUE}). The intercept is
+handled exactly by centering (Frisch--Waugh): the MIO runs on demeaned
+data and the intercept is recovered as
+\eqn{\hat\alpha = \bar y - \bar x'\hat\beta}; it is not counted in
+\eqn{k}.
+
+The problem is solved on the raw data throughout (centered when an
+intercept is included): no standardization or rescaling of the
+predictors is applied at any stage, so the estimator inherits the exact
+scale-equivariance of least squares on the selected subset. The MIO
+imposes no heuristic coefficient bounds -- the SOS-1 formulation needs
+no big-M constants (their formulation (2.4)) -- so the solver returns
+the exact constrained least squares optimum (up to solver tolerances)
+in every regime. The formulation is strengthened only by provable
+constraints derived from the warm-start objective value \eqn{UB}:
+per-coefficient bounds from the least squares level set when
+\eqn{p < n} and \eqn{X'X} is invertible (Section 2.3.2 of the paper,
+closed form for least squares), and fitted-value bounds
+\eqn{|\eta_i - y_i| \le \sqrt{2 UB}} when \eqn{p \ge n}. Predictors
+that are constant over the estimation window cannot enter the fit and
+receive a zero coefficient.
+}
+\examples{
+\dontrun{
+# Requires the Gurobi solver and its R package.
+x <- matrix(rnorm(100 * 6), 100, 6)
+y <- x[, 1] - 0.5 * x[, 2] + rnorm(100)
+
+# Subset size selected by BIC
+mod <- bss(x, y)
+coef(mod)
+
+# Fixed subset size
+mod2 <- bss(x, y, k = 2)
+}
+
+}
+\references{
+Bertsimas, D., King, A., and Mazumder, R. (2016).
+"Best Subset Selection via a Modern Optimization Lens."
+\emph{The Annals of Statistics}, 44(2), 813--852.
+}
+\seealso{
+\code{\link{lasso}} for Lasso-family estimation,
+  \code{\link{roll_predict}} for rolling-window forecasting.
 }

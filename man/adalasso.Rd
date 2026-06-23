@@ -8,10 +8,11 @@ adalasso(
   x,
   y,
   lambda,
-  lambda_lasso = NULL,
+  lambda_init = NULL,
   gamma = 1,
   intercept = TRUE,
-  scalex = FALSE
+  scale_x = FALSE,
+  model = NULL
 )
 }
 \arguments{
@@ -21,13 +22,15 @@ adalasso(
 
 \item{lambda}{Shrinkage tuning parameter for the adaptive step}
 
-\item{lambda_lasso}{Shrinkage tuning parater for the initial step Lasso estimation (If applicable)}
+\item{lambda_init}{Shrinkage tuning parameter for the initial step Lasso estimation (If applicable)}
 
 \item{gamma}{Parameter controlling the inverse of first step estimate}
 
 \item{intercept}{A boolean: include an intercept term or not}
 
-\item{scalex}{A boolean: standardize the design matrix or not}
+\item{scale_x}{A boolean: standardize the design matrix or not}
+
+\item{model}{A string: model in the initial estimation, "lasso", "ridge", or "ols". Default is "lasso" for high-dimensional case and "ols" for low-dimensional case.}
 }
 \value{
 A list contains estimated intercept and slope
@@ -39,5 +42,10 @@ Estimation function. Tuning parameter inputs needed.\cr
 Incorporates both high-dim(Lasso as initial estimator) and low-dim (OLS as initial estimator).
 }
 \examples{
-adalasso(x,y)
+\dontrun{
+x <- matrix(rnorm(50 * 5), 50, 5)
+y <- rnorm(50)
+adalasso(x, y, lambda = 0.1)
 }
+}
+\keyword{internal}

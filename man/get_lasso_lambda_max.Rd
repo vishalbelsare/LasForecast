@@ -7,17 +7,37 @@
 get_lasso_lambda_max(
   x,
   y,
-  scalex = FALSE,
+  scale_x = FALSE,
+  intercept = TRUE,
   nlambda = 100,
-  lambda_min_ratio = 1e-04
+  lambda_min_ratio = 1e-04,
+  per_coord = FALSE
 )
 }
 \arguments{
-\item{lambda_min_ratio}{}
+\item{x}{Predictor matrix}
+
+\item{y}{Response vector}
+
+\item{scale_x}{Boolean to scale x}
+
+\item{intercept}{Boolean; if TRUE (and \code{scale_x = FALSE}) center x and y
+so the grid top matches glmnet's centered lambda_max.}
+
+\item{nlambda}{Number of lambdas}
+
+\item{lambda_min_ratio}{Ratio of min/max lambda}
+
+\item{per_coord}{Boolean; if TRUE return the per-coordinate entry thresholds
+\eqn{|x_j'(y - \bar y)| / n} (a length-\code{ncol(x)} vector) instead of
+their maximum. The adaptive grid in \code{train_lasso} weights each
+coordinate before taking the max, so it needs the vector.}
 }
 \value{
-lambda_max
+Scalar \code{lambda_max} (the maximum), or the per-coordinate vector
+  when \code{per_coord = TRUE}.
 }
 \description{
 Get the maximum lambda value for lasso
 }
+\keyword{internal}

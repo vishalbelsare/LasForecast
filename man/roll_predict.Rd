@@ -2,36 +2,86 @@
 % Please edit documentation in R/roll_predict.R
 \name{roll_predict}
 \alias{roll_predict}
-\title{Rolling window forecast}
+\title{Rolling window forecast (Refactored)}
 \usage{
 roll_predict(
   x,
-  y,
+  y = NULL,
   roll_window,
   h = 1,
-  methods_use = c("RW", "RWwD", "OLS", "Lasso", "Lasso_Std", "ALasso", "TALasso", "bss",
-    "rss", "rlasso", "lad", "lad_lasso"),
-  train_method_las = "cv",
-  verb = TRUE,
-  ar_order = 0
+  methods_use = c("RW", "RWwD", "OLS", "PLasso", "SLasso", "ALasso", "TALasso"),
+  train_method = "cv",
+  verbose = TRUE,
+  ar_order = 0,
+  date_col = NULL,
+  window_type = c("rolling", "expanding"),
+  type = "level",
+  alasso_model = NULL,
+  alasso_lambda_init = NULL,
+  arma_order = NULL,
+  bss_k = NULL,
+  ...
 )
 }
 \arguments{
-\item{x}{Full sample predictor}
+\item{x}{Full sample predictor. Can be a matrix, data.frame, tibble, or tsibble. Should not include the intercept column.}
 
-\item{y}{Full sample forecast target}
+\item{y}{Full sample forecast target, or column name string when \code{x} is a data frame.
+Note: in the code, y(t+1) is predicted by x(t). If you want to do long horizon forecast (h > 1), you must manually shift y accordingly before input,
+i.e. before input, change y(t) to y(t+h-1), such that in the code y(t+h) is predicted by x(t).}
 
 \item{roll_window}{Length of the rolling window}
 
-\item{h}{forecast horizon}
+\item{h}{Forecast horizon. The rolling regression is always one-step (it pairs
+\code{y(t+1)} with \code{x(t)}); \code{h} only sets the gap between the last
+training target \code{y(i-h)} and the forecast input \code{x(i-1)}, which
+prevents look-ahead when \code{y} is (or has been shifted to be) an
+\code{h}-horizon target. See the \code{y} note on shifting.}
 
-\item{train_method_las}{parameter tuning method for Lasso type methods. For comparison, all Lasso type methods shares the same train_method.}
+\item{methods_use}{method in use}
 
-\item{verb}{boolean to control whether print information on screen}
+\item{train_method}{parameter tuning method for Lasso type methods.}
+
+\item{verbose}{boolean to control whether print information on screen}
 
 \item{ar_order}{0 or 1 to control whether include ar1 lag or not}
 
-\item{method_use}{method in use}
+\item{date_col}{Optional date column name (for data.frame/tibble input).}
+
+\item{window_type}{Character string: \code{"rolling"} (default) for fixed-size
+rolling window, or \code{"expanding"} for expanding window.}
+
+\item{type}{Type of forecast target y. This is only relevant for RW method.
+"diff" for returns/differences and RW predicts zeros; "level" for levels and RW predicts the previous value. Default is "level".}
+
+\item{alasso_model}{Initial estimation model for adaptive Lasso: \code{"lasso"}, \code{"ridge"}, or \code{"ols"}. Default \code{NULL} auto-selects based on dimensionality.}
+
+\item{alasso_lambda_init}{Penalty for the Lasso/ridge initial estimator
+generating the adaptive Lasso weights (ALasso/TALasso and their post
+variants). Default \code{NULL}: tuned internally by 10-fold block CV
+within each window. Ignored when the initial estimator is OLS.}
+
+\item{arma_order}{ARMA order \code{c(p, d, q)} for the \code{"ARMA"} benchmark.
+Default \code{NULL} selects \eqn{p} and \eqn{q} automatically by information
+criterion. ARMA is univariate (it ignores the predictors and \code{ar_order});
+other ARMA specifications (\code{include.mean}, \code{d}, \code{max_p},
+\code{max_q}, \code{ic}, \code{arma_method}) may be passed via \code{...}.
+See \code{\link{arma}}.}
+
+\item{bss_k}{Fixed subset size for the \code{"BSS"} method. Default
+\code{NULL}: the subset size is selected within each window by
+information criterion (\code{train_method} when it is one of
+\code{"aic"}, \code{"bic"}, \code{"aicc"}, \code{"hqc"}; otherwise BIC).
+\code{"BSS"} requires the Gurobi solver; see \code{\link{bss}}, whose
+other options (\code{ic_type}, \code{k_max}, \code{time_limit}) may be
+passed via \code{...}.}
+
+\item{...}{Additional arguments passed to \code{\link{lasso}} and its
+tuning function \code{train_lasso}. Useful options include
+\code{intercept}, \code{gamma}, \code{nlambda}, \code{k},
+\code{alpha}, \code{lambda_seq}, \code{lambda_min_ratio}.
+Note \code{k} is the fold count for cross-validation tuning of the
+Lasso methods, not the BSS subset size (\code{bss_k}).}
 }
 \description{
 The function reads data and make forecasts based on linear predictive regression

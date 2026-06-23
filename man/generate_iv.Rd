@@ -6,6 +6,19 @@
 \usage{
 generate_iv(d, n, a, c_z = 5)
 }
+\arguments{
+\item{d}{Vector of regressor values}
+
+\item{n}{Sample size}
+
+\item{a}{Parameter in constructing IV}
+
+\item{c_z}{Parameter in constructing IV}
+}
+\value{
+Instrumental variable vector of length n-1
+}
 \description{
 Self-generated IVs
 }
+\keyword{internal}

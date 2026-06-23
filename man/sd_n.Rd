@@ -7,7 +7,10 @@
 sd_n(x)
 }
 \arguments{
-\item{x}{a vector}
+\item{x}{A numeric vector}
+}
+\value{
+SD of x
 }
 \description{
 standard deviation of x

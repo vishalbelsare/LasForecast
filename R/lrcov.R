@@ -1,24 +1,23 @@
 #' Long-run covariance estimator
-#' 
+#'
 #' Use bartlett kernel to estimate long-run covariance where the bandwidth
 #' determined Andrews (1991, Eq. (6.2) and (6.4)).
 #' Part of the function adapted from the "bwAndrews" function in
 #' "sandwich" package
-#' 
-#' @param x
-#' @param y = NULL if computing the long run variance of x only
-#' @param type = 0 (default) for long-run covariance or 1 for one-sided long-run variance
-#' 
-#' @export
-#' 
+#'
+#' @param x A numeric matrix or vector
+#' @param y A numeric matrix or vector (optional)
+#' @param type Integer 0 or 1. 0 for long-run covariance, 1 for one-sided.
+#'
+#' @keywords internal
+#'
 lrcov_est <- function(x, y = NULL, type = 0) {
-
     x <- as.matrix(x)
     n <- nrow(x)
     px <- ncol(x)
     if (!is.null(y)) {
         y <- as.matrix(y)
-        py  <- ncol(y)
+        py <- ncol(y)
         # Stack x and y
         u_mat <- cbind(x, y)
     } else {
@@ -34,7 +33,7 @@ lrcov_est <- function(x, y = NULL, type = 0) {
     if (Q == 0) {
         return(cov(x, y))
     }
-    
+
     # Bartlett kernel
     Bartlett_Kern <- 1 - (0:(Q - 1)) / Q
 
@@ -47,7 +46,7 @@ lrcov_est <- function(x, y = NULL, type = 0) {
     if (Q == 1 | type == 1) {
         return(lrcov_hat_one_side)
     } else if (type == 0) {
-         lrcov_temp <- array(NA, dim = c(px, py, Q - 1))
+        lrcov_temp <- array(NA, dim = c(px, py, Q - 1))
         for (t in 1:(Q - 1)) {
             # Here t is actually the absolute value of lags
             lrcov_temp[, , t] <- t(x[1:(n - t), , drop = FALSE]) %*% y[(t + 1):n, , drop = FALSE] * Bartlett_Kern[t + 1] / (n - t)
@@ -58,4 +57,3 @@ lrcov_est <- function(x, y = NULL, type = 0) {
         stop("type must be 0 or 1")
     }
 }
-

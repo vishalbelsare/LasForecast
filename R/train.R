@@ -1,253 +1,313 @@
 # ----
-#' Do parameter tuning for Lasso and Adaptive lasso
+#' Tuning parameter selection for LASSO
 #'
-#' @param x Predictor matrix (n-by-p matrix)
-#' @param y Response variable
-#' @param ada A boolean: Do parameter tuning for adaptive Lasso if TRUE (Default) For Lasso if FALSE.
-#' @param gamma Parameter controlling the inverse of first step estimate. By default = 1.
-#' @param intercept A boolean: include an intercept term or not
-#' @param scalex A boolean: standardize the design matrix or not
-#' @param lambda_seq Candidate sequnece of parameters. If NULL, the function generates the sequnce.
-#' @param train_method "timeslice", "cv", "cv_random", "aic", "bic", "aicc", "hqc"
-#'      "timeslice": https://topepo.github.io/caret/data-splitting.html#time
-#'          By combining initial window, horizon, fixed window and skip, we can control the sample splitting.
-#'          Roll_block: Setting initial_window = horizon = floor(nrow(x) / k), fixed_window = False, and skip = floor(nrow(x) / k) - 1
-#'          Period-by-period rolling: skip = 0. 
-#'      "cv": Cross-validation based on block splits.
-#'      "cv_random": Cross-validition based on random splits.
-#'      "aic", "bic", "aicc", "hqc": based on information criterion.
-#' @param nlambda # of lambdas
-#' @param lambda_min_ratio # lambda_min_ratio * lambda_max = lambda_min
-#' @param k k-fold cv if "cv" is chosen
-#' @param initial_window control "timeslice"
-#' @param horizon control "timeslice"
-#' @param fixed_window control "timeslice"
-#' @param skip control "timeslice"
+#' Selects the penalty parameter lambda for LASSO or Adaptive LASSO
+#' via cross-validation, time-series CV, or information criteria.
 #'
-#' @return bestTune
+#' @param x Predictor matrix (\eqn{n \times p}).
+#' @param y Response vector (length \eqn{n}).
+#' @param ada Logical. If \code{TRUE} (default), tune for Adaptive LASSO;
+#'   if \code{FALSE}, tune for standard LASSO.
+#' @param gamma Exponent for adaptive penalty weights
+#'   \eqn{\hat\tau_j = |\hat\theta_j^{init}|^{-\gamma}}. Default 1.
+#' @param alpha Elastic-net mixing parameter passed to \code{glmnet}.
+#'   Use 1 for LASSO (default) and 0 for ridge.
+#' @param intercept Logical. Include an intercept term (default \code{TRUE}).
+#' @param model Initial estimator for adaptive weights: \code{"lasso"},
+#'   \code{"ridge"}, or \code{"ols"}. Default \code{NULL} auto-selects
+#'   based on dimensionality (\eqn{n} vs \eqn{p}).
+#' @param lambda_init Penalty for the Lasso/ridge \emph{initial} estimator
+#'   generating the adaptive weights when \code{ada = TRUE}. Default
+#'   \code{NULL}: tuned internally by 10-fold block CV. Ignored when
+#'   \code{ada = FALSE} or the initial estimator is OLS.
+#' @param scale_x Logical. Standardize predictors before fitting (default \code{FALSE}).
+#' @param lambda_seq Candidate sequence of lambda values. If \code{NULL}
+#'   (default), the function generates the sequence automatically.
+#' @param train_method Tuning parameter selection method. One of:
+#'   \describe{
+#'     \item{\code{"cv"}}{Block cross-validation. Splits the sample into \code{k}
+#'       contiguous blocks; each block serves as the validation fold in turn.
+#'       \preformatted{
+#'  Iter 1: train train train train  val
+#'  Iter 2: train train train  val  train
+#'  Iter 3: train train  val  train train
+#'       }}
+#'     \item{\code{"cv_random"}}{Random cross-validation. Assigns observations to
+#'       \code{k} folds randomly, ignoring temporal order. Appropriate only when
+#'       serial dependence is weak.}
+#'     \item{\code{"timeslice"}}{Time-series cross-validation. Training always uses
+#'       past data; validation uses future data. Controlled by \code{initial_window},
+#'       \code{horizon}, \code{fixed_window}, and \code{skip}.
+#'       \preformatted{
+#'  Rolling (fixed_window = TRUE):
+#'  Iter 1: ===train===|=val=|
+#'  Iter 2:   ===train===|=val=|
+#'  Iter 3:     ===train===|=val=|
+#'
+#'  Expanding (fixed_window = FALSE):
+#'  Iter 1: ===train===|=val=|
+#'  Iter 2: ====train====|=val=|
+#'  Iter 3: =====train=====|=val=|
+#'       }}
+#'     \item{\code{"aic"}, \code{"bic"}, \code{"aicc"}, \code{"hqc"}}{Information
+#'       criterion. Fits the model along the full lambda path and selects the lambda
+#'       minimizing the chosen criterion. Fast; no sample splitting required.}
+#'   }
+#' @param nlambda Number of candidate lambda values (default 100).
+#' @param lambda_min_ratio Ratio determining the smallest lambda:
+#'   \code{lambda_min = lambda_min_ratio * lambda_max} (default 0.0001).
+#' @param k Number of folds for \code{"cv"} and \code{"cv_random"} methods
+#'   (default 10).
+#' @param initial_window Size of the first training set for \code{"timeslice"}
+#'   (default: 70\% of \eqn{n}).
+#' @param horizon Number of periods in each validation set for
+#'   \code{"timeslice"} (default 1).
+#' @param fixed_window Logical. If \code{TRUE} (default), the training window
+#'   rolls forward at fixed size; if \code{FALSE}, it expands.
+#' @param skip Number of periods to skip between successive splits in
+#'   \code{"timeslice"} (default 0).
+#'
+#' @return The selected lambda value (numeric scalar).
 #'
 #' @export
 #'
 #' @examples
-#' train_lasso(x,y)
+#' \dontrun{
+#' x <- matrix(rnorm(50 * 5), 50, 5)
+#' y <- rnorm(50)
+#' train_lasso(x, y)
+#' }
 train_lasso <- function(
-    x,
-    y,
-    ada = TRUE,
-    gamma = 1,
-    intercept = TRUE,
-    scalex = FALSE,
-    lambda_seq = NULL,
-    train_method = "timeslice",
-    nlambda = 100,
-    lambda_min_ratio = 0.0001,
-    k = 10,
-    initial_window = ceiling(nrow(x)*0.7),
-    horizon = 1,
-    fixed_window = TRUE,
-    skip = 0
+  x,
+  y,
+  ada = TRUE,
+  gamma = 1,
+  model = NULL,
+  lambda_init = NULL,
+  alpha = 1,
+  intercept = TRUE,
+  scale_x = FALSE,
+  lambda_seq = NULL,
+  train_method = "timeslice",
+  nlambda = 100,
+  lambda_min_ratio = 0.0001,
+  k = 10,
+  initial_window = ceiling(nrow(x) * 0.7),
+  horizon = 1,
+  fixed_window = TRUE,
+  skip = 0
 ) {
     n <- nrow(x)
     p <- ncol(x)
 
-    if (is.null(lambda_seq)) {
-        lambda_max_lasso <- get_lasso_lambda_max(x,
-            y,
-            scalex = scalex,
-            nlambda = nlambda,
-            lambda_min_ratio = lambda_min_ratio
-        )
-
-        if (ada) {
-            if (intercept) {
-                coef_max <- max(abs(lsfit(x, y)$coefficients[-1]))
-            } else {
-                coef_max <- max(abs(lsfit(x, y, intercept = intercept)))
-            }
-            lambda_max <- coef_max * lambda_max_lasso
-        } else {
-            lambda_max <- lambda_max_lasso
-        }
-
-        lambda_seq <- get_lambda_seq(lambda_max, lambda_min_ratio = lambda_min_ratio, nlambda = nlambda)
+    if (ada && alpha != 1) {
+        stop("Adaptive lasso tuning only supports alpha = 1. Use ada = FALSE for ridge tuning.")
     }
 
+    w <- NULL
     if (ada) {
-        w <- init_est(x,
-                      y,
-                      lambda_lasso = NULL,
-                      gamma = gamma,
-                      intercept = intercept,
-                      scalex = scalex)
+        init_result <- init_est(x, y, lambda_init = lambda_init, gamma = gamma,
+                                intercept = intercept, scale_x = scale_x, model = model)
+        w <- init_result$w
+        coef_init <- init_result$coef_init
     }
 
-    glmnet_args <- list(
-        x = x,
-        y = y,
-        lambda = lambda_seq,
-        intercept = intercept,
-        standardize = scalex,
-        nfolds = k
-    )
-    if(ada){
-        glmnet_args$penalty.factor = w
+    if (is.null(lambda_seq)) {
+        if (alpha == 1) {
+            if (ada) {
+                # Coordinate j enters the all-zero solution at
+                # lambda = |corr_j| / w_j = |corr_j| * |theta_init_j|^gamma,
+                # so the grid top is the max over j of these per-coordinate
+                # products. max-of-products (not the old product-of-maxes upper
+                # bound) keeps lambda_max equal to the exact entry threshold and
+                # scale-equivariant at gamma = 1 (Lee, Shi & Gao 2022). corr_j
+                # is read on the same operating scale as the weights.
+                cross_j <- get_lasso_lambda_max(x, y, scale_x = scale_x,
+                                                intercept = intercept, per_coord = TRUE)
+                coef_slope <- if (intercept) coef_init[-1] else coef_init
+                if (scale_x) coef_slope <- coef_slope * apply(x, 2, sd_n)
+                lambda_max <- max(cross_j * abs(coef_slope)^gamma)
+                # Degenerate case: the initial estimator screened out every
+                # variable, so all weights sit at the floor and any lambda
+                # yields the empty model; fall back to the plain-Lasso cap so
+                # the log-spaced grid stays defined.
+                if (lambda_max == 0) lambda_max <- max(cross_j)
+            } else {
+                lambda_max <- get_lasso_lambda_max(x, y, scale_x = scale_x,
+                                                   intercept = intercept)
+            }
+            # Nudge the grid top just above the exact entry threshold so the
+            # intercept-only model is reliably the first grid point: glmnet's
+            # reported df can flip 0 <-> 1 exactly at the boundary under
+            # predictor rescaling, which would otherwise drop the empty model
+            # from the path and bias IC selection (breaking the scale
+            # invariance of standardized Lasso).
+            lambda_max <- lambda_max * (1 + 1e-7)
+            lambda_seq <- get_lambda_seq(lambda_max, lambda_min_ratio = lambda_min_ratio, nlambda = nlambda)
+        } else {
+            lambda_seq <- glmnet::glmnet(x = x, y = y, alpha = alpha, intercept = intercept,
+                                         standardize = scale_x, nlambda = nlambda,
+                                         lambda.min.ratio = lambda_min_ratio)$lambda
+        }
+    }
+
+    glmnet_args <- list(x = x, y = y, lambda = lambda_seq, alpha = alpha,
+                        intercept = intercept, standardize = scale_x, nfolds = k)
+    if (ada) {
+        glmnet_args$penalty.factor <- w
         glmnet_args$lambda <- lambda_seq * sum(w) / p
     }
 
-    if(train_method %in% c("cv", "cv_random")){
-
-        if (train_method == "cv") {
-            glmnet_args$foldid = foldid_vec(n, k = k)
-        }
-
-        cv_las <- do.call(glmnet::cv.glmnet, glmnet_args)
-        lambda_cv <- cv_las$lambda.min
-
-        if(ada){
-            return(lambda_cv * p / sum(w))
-        } else {
-            return(lambda_cv)
-        }
-
-    } else if (train_method %in% c("aic", "bic", "aicc", "hqc")){
-
-        glm_est <- do.call(glmnet::glmnet, glmnet_args)
-
-        y_hat <- as.matrix(predict(glm_est, newx = x))
-        e_hat <- matrix(y, n, length(lambda_seq)) - y_hat
-        mse <- colMeans(e_hat^2)
-
-        nvar <- glm_est$df + intercept
-        bic <- n * log(mse) + log(n) * nvar
-        aic <- n * log(mse) + 2 * nvar
-        aicc <- aic + 2 * (nvar) *(nvar + 1) / (n - nvar - 1)
-        hqc <- n * log(mse) + 2 * nvar * log(log(n))
-
-        if(train_method == "aic"){
-            ic <- aic
-        } else if (train_method == "bic"){
-            ic <- bic
-        } else if (train_method == "aicc"){
-            ic <- aicc
-        } else if (train_method == "hqc"){
-            ic <- hqc
-        }
-
-        lambda_temp <- lambda_seq[which.min(ic)]
-
-        if(ada){
-            return(lambda_temp * p / sum(w))
-        } else {
-            return(lambda_temp)
-        }
-
-
+    if (train_method %in% c("cv", "cv_random")) {
+        .train_cv(glmnet_args, train_method, n, k, ada, p, w)
+    } else if (train_method %in% c("aic", "bic", "aicc", "hqc")) {
+        .train_ic(glmnet_args, train_method, lambda_seq, n, intercept, alpha, ada, p, w)
     } else if (train_method == "timeslice") {
-
-        train_control <- caret::trainControl(method = "timeslice",
-                                             initialWindow = initial_window,
-                                             horizon = horizon,
-                                             fixedWindow = fixed_window,
-                                             skip = skip)
-
-        if(ada){
-            glm_grid <- expand.grid(alpha = 1, lambda = lambda_seq * sum(w) / p)
-            train_args <- list(x = as.data.frame(x),
-                               intercept = intercept,
-                               standardize = scalex,
-                               penalty.factor = w,
-                               y = as.numeric(y),
-                               method = "glmnet",
-                               preProcess = NULL,
-                               trControl = train_control,
-                               tuneGrid = glm_grid)
-
-        } else {
-            glm_grid <- expand.grid(alpha = 1, lambda = lambda_seq)
-            train_args <- list(x = as.data.frame(x),
-                               intercept = intercept,
-                               standardize = scalex,
-                               y = as.numeric(y),
-                               method = "glmnet",
-                               preProcess = NULL,
-                               trControl = train_control,
-                               tuneGrid = glm_grid)
-        }
-
-
-        glm_train_fit <- do.call(caret::train, train_args)
-
-        if(ada){
-            return(glm_train_fit$bestTune$lambda * p / sum(w))
-        } else {
-            return(glm_train_fit$bestTune$lambda)
-        }
+        .train_timeslice(x, y, alpha, intercept, scale_x, lambda_seq,
+                         initial_window, horizon, fixed_window, skip, ada, w, p)
     } else {
         stop("Invalid train_method input.")
-        NULL
     }
 }
 
-foldid_vec <- function(TT, k) {
 
-    # generate folder id vector for cross-validation
-    # input as foldid argument in glmnet
+.train_cv <- function(glmnet_args, train_method, n, k, ada, p, w) {
+    if (train_method == "cv") {
+        glmnet_args$foldid <- foldid_vec(n, k = k)
+    }
+    cv_las <- do.call(glmnet::cv.glmnet, glmnet_args)
+    lambda_cv <- cv_las$lambda.min
+    if (ada) lambda_cv * p / sum(w) else lambda_cv
+}
 
-    # INPUTS: TT: number of observations k: number of folds
-    # OUTPUIS:
-    # id: a vector of length TT
 
-    # Eg: TT = 100, k = 5 id = c(1,1,...,1, 2,2,...,2, 3,3,...,3,
-    # 4,4,...,4, 5,5,...,5)
+.train_ic <- function(glmnet_args, train_method, lambda_seq, n, intercept, alpha, ada, p, w) {
+    if (alpha == 0) {
+        stop("Information-criterion tuning is not supported for ridge. Use cv, cv_random, or timeslice instead.")
+    }
+    glm_est <- do.call(glmnet::glmnet, glmnet_args)
+    lambda_fit <- glm_est$lambda
 
-    seq.interval = split(1:TT, ceiling(seq_along(1:TT)/(TT/k)))
+    y_hat <- as.matrix(predict(glm_est, newx = glmnet_args$x))
+    e_hat <- matrix(glmnet_args$y, n, length(lambda_fit)) - y_hat
+    mse <- colMeans(e_hat^2)
 
-    id = rep(0, TT)
-    for (j in 1:k) {
-        id[seq.interval[[j]]] = j
+    nvar <- glm_est$df + intercept
+    ic <- switch(train_method,
+        "aic" = n * log(mse) + 2 * nvar,
+        "bic" = n * log(mse) + log(n) * nvar,
+        "aicc" = n * log(mse) + 2 * nvar + 2 * nvar * (nvar + 1) / (n - nvar - 1),
+        "hqc" = n * log(mse) + 2 * nvar * log(log(n))
+    )
+
+    # Guard the saturated tail: mse = 0 gives log(mse) = -Inf and the AICc
+    # correction divides by (n - nvar - 1) <= 0, either of which would make
+    # which.min lock onto a degenerate (over-fit) lambda. Exclude them.
+    ic[!is.finite(ic)] <- Inf
+    lambda_temp <- lambda_fit[which.min(ic)]
+    if (ada) lambda_temp * p / sum(w) else lambda_temp
+}
+
+
+.train_timeslice <- function(x, y, alpha, intercept, scale_x, lambda_seq,
+                              initial_window, horizon, fixed_window, skip, ada, w, p) {
+    n <- nrow(x)
+    slices <- create_time_slices(n, initial_window, horizon, fixed_window, skip)
+
+    fit_lambda <- if (ada) lambda_seq * sum(w) / p else lambda_seq
+
+    glmnet_base <- list(alpha = alpha, intercept = intercept, standardize = scale_x)
+    if (ada) glmnet_base$penalty.factor <- w
+
+    mse_sum <- rep(0, length(fit_lambda))
+    for (j in seq_along(slices$train)) {
+        args <- c(list(x = x[slices$train[[j]], , drop = FALSE],
+                       y = y[slices$train[[j]]],
+                       lambda = fit_lambda), glmnet_base)
+        fit <- do.call(glmnet::glmnet, args)
+        pred <- predict(fit, newx = x[slices$test[[j]], , drop = FALSE])
+        mse_sum <- mse_sum + colMeans((y[slices$test[[j]]] - pred)^2)
     }
 
-    return(id)
+    best_lambda <- fit_lambda[which.min(mse_sum)]
+    if (ada) best_lambda * p / sum(w) else best_lambda
+}
+
+
+create_time_slices <- function(n, initial_window, horizon, fixed_window = TRUE, skip = 0) {
+    stops <- seq(initial_window, n - horizon, by = skip + 1)
+    train_list <- vector("list", length(stops))
+    test_list <- vector("list", length(stops))
+    for (i in seq_along(stops)) {
+        start <- if (fixed_window) stops[i] - initial_window + 1 else 1
+        train_list[[i]] <- start:stops[i]
+        test_list[[i]] <- (stops[i] + 1):(stops[i] + horizon)
+    }
+    list(train = train_list, test = test_list)
+}
+
+
+foldid_vec <- function(TT, k) {
+    seq_interval <- split(1:TT, ceiling(seq_along(1:TT) / (TT / k)))
+    id <- rep(0, TT)
+    for (j in 1:k) {
+        id[seq_interval[[j]]] <- j
+    }
+    id
 }
 
 # -----
 
 #' Do parameter tuning for Twin Adaptive Lasso (TALasso)
 #'
-#' If all variables are killed in the first step: return a random number\cr
+#' If all variables are killed in the first step: return NA\cr
 #' If more than 1 variables are left: just repeat the training process for alasso\cr
 #' If only 1 variable remained: use a brute-force process do the cross-validation.\cr
-#' FOR FUTURE WORK: INCORPORATE TALASSO INTO CARET FRAMEWORK.
 #'
 #' @param x Predictor matrix (n-by-p matrix)
 #' @param y Response variable
 #' @param b_first estimated slope from first step alasso
 #' @param gamma Parameter controlling the inverse of first step estimate. By default = 1.
+#' @param model Ignored. The second-step initial estimator is always OLS,
+#'   because the first-step-selected set is low-dimensional by construction and
+#'   talasso() builds its weights from the OLS fit. Retained for interface
+#'   compatibility with \code{train_lasso}.
 #' @param intercept A boolean: include an intercept term or not
-#' @param scalex A boolean: standardize the design matrix or not
-#' @param train_method "timeslice" or "cv"
+#' @param scale_x A boolean: standardize the design matrix or not
 #' @param lambda_seq Candidate sequnece of parameters. If NULL, the function generates the sequnce.
 #' @param train_method "timeslice", "cv",  "aic", "bic", "aicc", "hqc"
-#' @param nlambda # of lambdas
-#' @param lambda_min_ratio # lambda_min_ratio * lambda_max = lambda_min
-#' @param k k-fold cv if "cv" is chosen
-#' @param initial_window control "timeslice"
-#' @param horizon control "timeslice"
-#' @param fixed_window control "timeslice"
-#' @param skip control "timeslice"
+#' @param nlambda Number of candidate lambda values (default 100).
+#' @param lambda_min_ratio Ratio determining the smallest lambda:
+#'   \code{lambda_min = lambda_min_ratio * lambda_max} (default 0.0001).
+#' @param k Number of folds for \code{"cv"} and \code{"cv_random"} methods
+#'   (default 10).
+#' @param initial_window Size of the first training set for \code{"timeslice"}
+#'   (default: 70\% of \eqn{n}).
+#' @param horizon Number of periods in each validation set for
+#'   \code{"timeslice"} (default 1).
+#' @param fixed_window Logical. If \code{TRUE} (default), the training window
+#'   rolls forward at fixed size; if \code{FALSE}, it expands.
+#' @param skip Number of periods to skip between successive splits in
+#'   \code{"timeslice"} (default 0).
 #'
-#' @return bestTune
+#' @return The selected lambda value (numeric scalar).
 #'
 #' @export
 #'
 #' @examples
-#' train_talasso(x,y)
+#' \dontrun{
+#' x <- matrix(rnorm(50 * 5), 50, 5)
+#' y <- rnorm(50)
+#' b_first <- rnorm(5)
+#' train_talasso(x, y, b_first = b_first)
+#' }
 train_talasso <- function(x,
                           y,
                           b_first,
                           gamma = 1,
+                          model = NULL,
                           intercept = TRUE,
-                          scalex = FALSE,
+                          scale_x = FALSE,
                           train_method = "timeslice",
                           lambda_seq = NULL,
                           nlambda = 100,
@@ -257,8 +317,6 @@ train_talasso <- function(x,
                           horizon = 1,
                           fixed_window = TRUE,
                           skip = 0) {
-
-
     n <- nrow(x)
     p <- ncol(x)
 
@@ -266,140 +324,103 @@ train_talasso <- function(x,
     p_selected <- sum(selected)
     xx <- as.matrix(x[, selected])
 
-
-    if(p_selected == 0){
-        warning("Already screened all predictors out in the first step. A random number returned.")
-        return(rnorm(1))
-    } else if ( p_selected > 1){
-        best_tune <- train_lasso(xx,
-                                 y,
-                                 ada = TRUE,
-                                 gamma = gamma,
-                                 intercept = intercept,
-                                 scalex = scalex,
-                                 lambda_seq = lambda_seq,
-                                 train_method = train_method,
-                                 nlambda = nlambda,
-                                 lambda_min_ratio = lambda_min_ratio,
-                                 k = k,
-                                 initial_window = initial_window,
-                                 horizon = horizon,
-                                 fixed_window = fixed_window)
+    if (p_selected == 0) {
+        warning("All predictors screened out in first step. Returning NA; talasso() will use mean(y) as forecast.")
+        return(NA)
+    } else if (p_selected > 1) {
+        # talasso() always builds its second-step weights from the OLS fit on the
+        # first-step-selected set (low-dimensional by construction). Tune lambda
+        # against those same OLS-based weights so the selected penalty matches the
+        # estimator that is actually deployed.
+        best_tune <- train_lasso(xx, y, ada = TRUE, gamma = gamma, model = "ols",
+                                 intercept = intercept, scale_x = scale_x,
+                                 lambda_seq = lambda_seq, train_method = train_method,
+                                 nlambda = nlambda, lambda_min_ratio = lambda_min_ratio,
+                                 k = k, initial_window = initial_window,
+                                 horizon = horizon, fixed_window = fixed_window,
+                                 skip = skip)
         return(best_tune)
-
     } else {
+        # Single-survivor path: weights also come from the OLS fit, matching the
+        # second step of talasso() (init_est() with one column always picks OLS).
+        init_result <- init_est(xx, y, gamma = gamma, intercept = intercept, scale_x = scale_x, model = "ols")
+        w <- init_result$w
+        coef_init <- init_result$coef_init
 
-        w <- init_est(xx, y, gamma = gamma, intercept = intercept, scalex = scalex)
-
-        if(is.null(lambda_seq)){
-
-            lambda_max_lasso <- abs(sum(xx * y)) / n
-            if(intercept) coef_max <- max( abs( lsfit(xx, y)$coefficients[-1] ) )
-            else coef_max <- max(abs( lsfit(xx, y, intercept = intercept) ))
-            lambda_max <- coef_max * lambda_max_lasso
+        if (is.null(lambda_seq)) {
+            # lambda_max must match the corrected single-predictor soft-threshold
+            # in lasso_weight_single() (which divides by the Gram term v). The
+            # entry threshold that zeroes the coefficient is then the centered
+            # cross-moment on the operating scale times max|b_init_std|^gamma,
+            # mirroring the general adaptive grid in train_lasso().
+            xv <- as.numeric(xx)
+            xop <- if (scale_x) xv / sd_n(xv) else xv
+            cross <- if (intercept) {
+                abs(sum((xop - mean(xop)) * (y - mean(y)))) / n
+            } else {
+                abs(sum(xop * y)) / n
+            }
+            coef_slope <- if (intercept) coef_init[-1] else coef_init
+            if (scale_x) coef_slope <- coef_slope * sd_n(xv)
+            coef_max <- max(abs(coef_slope)^gamma)
+            lambda_max <- coef_max * cross
+            if (lambda_max == 0) lambda_max <- cross
             lambda_seq <- get_lambda_seq(lambda_max, lambda_min_ratio = lambda_min_ratio, nlambda = nlambda)
-
         }
 
-        
-        # Case 1: "cv" and "timeslice" (Need cross-validation and sample splitting).
-        # Case 2: "*ic" (No sample split.)
         if (train_method %in% c("cv", "timeslice")) {
-
-            if (train_method == "cv"){
-
+            if (train_method == "cv") {
                 data_split <- list(train = list(), test = list())
                 ind_seq <- 1:n
-                seq_interval <- split(ind_seq, ceiling(seq_along(1:n)/(n/k)))
-
-
-                for(j in 1:k){
-                    data_split$train[[j]] <-  ind_seq[-seq_interval[[j]]]
+                seq_interval <- split(ind_seq, ceiling(seq_along(1:n) / (n / k)))
+                for (j in 1:k) {
+                    data_split$train[[j]] <- ind_seq[-seq_interval[[j]]]
                     data_split$test[[j]] <- ind_seq[seq_interval[[j]]]
                 }
-
             } else if (train_method == "timeslice") {
-
-                data_split <- caret::createTimeSlices(y,
-                                                      initialWindow = initial_window,
-                                                      horizon = horizon,
-                                                      fixedWindow = fixed_window,
-                                                      skip = skip)
+                data_split <- create_time_slices(n, initial_window, horizon,
+                                                    fixed_window, skip)
             }
 
-            MSE = rep(0, length(lambda_seq))
-
-            for(i in 1:length(lambda_seq)){
-
-                lambda = lambda_seq[i]
-
-                for(j in 1:length(data_split$train)){
-
-
+            MSE <- rep(0, length(lambda_seq))
+            for (i in seq_along(lambda_seq)) {
+                lambda <- lambda_seq[i]
+                for (j in seq_along(data_split$train)) {
                     y_j <- y[data_split$train[[j]]]
                     x_j <- xx[data_split$train[[j]], ]
-
                     y_p <- as.matrix(y[data_split$test[[j]]])
                     x_p <- xx[data_split$test[[j]], ]
 
-                    result <- lasso_weight_single(x_j,
-                                                 y_j,
-                                                 lambda = lambda,
-                                                 w = w,
-                                                 intercept = intercept,
-                                                 scalex = scalex)
-
+                    result <- lasso_weight_single(x_j, y_j, lambda = lambda,
+                                                  w = w, intercept = intercept, scale_x = scale_x)
                     a_ada <- as.numeric(result$ahat)
                     b_ada <- as.numeric(result$bhat)
 
-                    if(intercept){
+                    if (intercept) {
                         coef_ada <- c(a_ada, b_ada)
-                        mse_j <- colMeans( (y_p - cbind(1, x_p) %*% coef_ada)^2 )
-                    }
-                    else{
+                        mse_j <- colMeans((y_p - cbind(1, x_p) %*% coef_ada)^2)
+                    } else {
                         coef_ada <- b_ada
-                        mse_j <- mean( (y_p - as.matrix(x_p) * coef_ada)^2 )
+                        mse_j <- mean((y_p - as.matrix(x_p) * coef_ada)^2)
                     }
-
                     MSE[i] <- MSE[i] + mse_j
                 }
-
             }
 
-
-            ind_sel <-  which.min(MSE)
-            lambda <- lambda_seq[ind_sel]
-            return(lambda)
-
+            return(lambda_seq[which.min(MSE)])
         } else if (train_method %in% c("aic", "bic", "aicc", "hqc")) {
-
-
             Coef_hat <- matrix(0, p_selected + intercept, length(lambda_seq))
             Df <- rep(0, length(lambda_seq))
 
-            for(ll in length(lambda_seq)){
-
+            for (ll in seq_along(lambda_seq)) {
                 lambda <- lambda_seq[ll]
-
-                result = lasso_weight_single(xx,
-                                             y,
-                                             lambda = lambda,
-                                             w = w,
-                                             intercept = intercept,
-                                             scalex = scalex)
-
+                result <- lasso_weight_single(xx, y, lambda = lambda,
+                                              w = w, intercept = intercept, scale_x = scale_x)
                 a_ada <- as.numeric(result$ahat)
                 b_ada <- as.numeric(result$bhat)
-
-                if(intercept){
-                    coef_ada <- c(a_ada, b_ada)
-                }
-                else{
-                    coef_ada <- b_ada
-                }
-
+                coef_ada <- if (intercept) c(a_ada, b_ada) else b_ada
                 Coef_hat[, ll] <- coef_ada
-                Df[ll] <- sum( b_ada != 0 )
+                Df[ll] <- sum(b_ada != 0)
             }
 
             y_hat <- cbind(1, xx) %*% Coef_hat
@@ -407,227 +428,19 @@ train_talasso <- function(x,
             mse <- colMeans(e_hat^2)
 
             nvar <- Df + intercept
-            bic <- n * log(mse) + log(n) * nvar
-            aic <- n * log(mse) + 2 * nvar
-            aicc <- aic + 2 * (nvar) *(nvar + 1) / (n - nvar - 1)
-            hqc <- n * log(mse) + 2 * nvar * log(log(n))
+            ic <- switch(train_method,
+                "aic" = n * log(mse) + 2 * nvar,
+                "bic" = n * log(mse) + log(n) * nvar,
+                "aicc" = n * log(mse) + 2 * nvar + 2 * nvar * (nvar + 1) / (n - nvar - 1),
+                "hqc" = n * log(mse) + 2 * nvar * log(log(n))
+            )
 
-            if(train_method == "aic"){
-                ic <- aic
-            } else if (train_method == "bic"){
-                ic <- bic
-            } else if (train_method == "aicc"){
-                ic <- aicc
-            } else if (train_method == "hqc"){
-                ic <- hqc
-            }
-
-            return( lambda_seq[which.min(ic)] )
-
+            # See .train_ic(): drop saturated lambdas (mse = 0 or AICc divisor
+            # <= 0) that would otherwise win which.min via a -Inf/NaN criterion.
+            ic[!is.finite(ic)] <- Inf
+            return(lambda_seq[which.min(ic)])
         } else {
             stop("Invalid train_method input.")
-            NULL
         }
     }
 }
-
-
-
-# -----------------------------------------------------------------
-# L2-Relaxation
-# -----------------------------------------------------------------
-
-
-#' Find the largest tau for L2-Relaxation
-#'
-#' This function finds the smallest tau for L2-Relaxation such that
-#' equal-weight solves the forecast combination optimization.
-#'
-#' @param sigma_mat Sample covariance matrix
-#'
-#' @return smallest tau corresponds to equal-weight
-#'
-#' @export
-
-find_tau_max  <- function(sigma_mat) {
-    n <- ncol(sigma_mat)
-    w_tilde <- rep(1, n) / n
-    gamma_tilde  <-
-        (max(sigma_mat %*% w_tilde) + min(sigma_mat %*% w_tilde)) / 2
-    tau_max <- max(abs(sigma_mat %*% w_tilde - gamma_tilde))
-    return(tau_max)
-}
-
-
-#' Do parameter tuning for L2-Relaxation
-#'
-#' @import caret
-#'
-#' @param y foreccasting target
-#' @param x forecasts to be combined
-#' @param tau.seq Sequence of tau values
-#' @param m number of folds
-#' @param ntau number of tau values
-#' @param tau.min.ratio ratio of the minimum tau in tau.seq over the maximum
-#'      (which is the smallest tau such that
-#'      equal-weight solves the forecast combination optimization.)
-#' @param train_method "cv_random", "cv" or "oos"
-#' @param solver "Rmosek" or "CVXR"
-#' @tol tolerance for the solver
-#'
-#'
-#' @return besttune
-#'
-#' @export
-
-train_l2_relax <- function(y, x,  m = 5, tau.seq = NULL, ntau = 100, tau.min.ratio = 0.01,
-                  train_method = "oos", solver = "Rmosek", tol = 1e-5) {
-
-    N <- length(y)
-
-    tau.max = NULL
-    MSE = rep(0, ntau)
-
-    # Generate folds
-    if (!(train_method %in% c("cv_random", "cv", "oos"))) {
-        stop("Invalid train_method input.")
-    }
-
-    if (train_method == "oos") {
-        set_splits <- split(1:N, ceiling(seq_along(1:N) / (N / m)))
-        test.set <- set_splits[-1]
-        train.set <- Reduce(union, set_splits[-5], accumulate = TRUE)
-    } else if (train_method == "cv_random") {
-        # Random split
-        test.set <- createFolds(y, k = m, list = TRUE, returnTrain = FALSE)
-        train.set <- lapply(test.set, function(s, tot = 1:N) {
-            setdiff(tot, s)
-        })
-    } else if (train_method == "cv") {
-        # Consecutive blocks
-        test.set <- split(1:N, ceiling(seq_along(1:N) / (N / m)))
-        train.set <- lapply(test.set, function(s, tot = 1:N) {
-            setdiff(tot, s)
-        })
-    }
-
-    if (is.null(tau.seq)) {
-        # Find the largest tau for L2-Relaxation
-        sigma_mat <- est_sigma_mat(y, x)
-        tau.max <- find_tau_max(sigma_mat)
-        tau.min <- tau.max * tau.min.ratio
-        ss <- (tau.max / tau.min)^(1 / (ntau - 1))
-        tau.seq <- tau.min * ss^(0:(ntau - 1))
-    }
-
-    for (i in 1:ntau) {
-        tau <- tau.seq[i]
-        for (j in 1:length(test.set)) {
-            y.j <- y[train.set[[j]]]
-            X.j <- x[train.set[[j]], ]
-
-            yp <- matrix(y[test.set[[j]]], length(test.set[[j]]), 1)
-            Xp <- x[test.set[[j]], ]
-
-            # Implementation of l2-relaxation with tau
-            sigma_mat_j  <- est_sigma_mat(y.j, X.j)
-            w_hat <- l2_relax_comb_opt(sigma_mat_j, tau, solver, tol)
-            y_hat <- Xp %*% w_hat
-            MSE[i] <- MSE[i] + colMeans((yp - y_hat)^2)
-        }
-    }
-
-    ind.sel = which.min(MSE)
-    tau.opt = tau.seq[ind.sel]
-
-    return(tau.opt)
-}
-
-# ------ L2 Relaxation Regression Version ---------
-
-#' Find the minimum tau such that equal weight solve the l_2 relaxation problem
-#'
-#' @param y
-#' @param X
-#' @param intercept
-#' @param solver The solver to use; "Rmosek" or "CVXR"
-#' @param tol Tolerance for the solver
-#'
-#' @export
-
-find_tau_max_reg <- function(y, X, solver = "CVXR",
-                             intercept = TRUE, tol = 1e-6) {
-    # Find the minimum tau such that equal weight solve the l_2 relaxation problem
-    # which is the upper bound of {tau>0 | constr in the l_2 relaxation prblem is binding}
-
-    # Solve min_{tau,alpha,lambda} t s.t.
-    #   ||X'(y-alpha-Xw_tilde)-lambda||_infty <= t*rate*sd(X)
-    #   alpha = 0 if intercept = F
-
-    N = nrow(X)
-    K = ncol(X)
-
-    bd = apply(X, 2, sd) * sqrt(log(K) / N)
-    B = t(X)%*%X%*%rep(1/K, K) - t(X)%*%y
-
-    if (solver == "Rmosek") {
-
-        prob = list(sense = "min")
-        prob$dparam$intpnt_nl_tol_rel_gap = tol
-
-        if(intercept){
-            # variable order: t, alpha, lambda
-            prob$c = c(1,0,0)
-
-            A = rbind(
-                cbind(bd, -t(X)%*%rep(1,N), -rep(1,K)),
-                cbind(bd, t(X)%*%rep(1,N), rep(1,K))
-            )
-            prob$A = as(A, "CsparseMatrix")
-            prob$bc = rbind( blc = c(B, -B) ,
-                             buc = rep(Inf, 2*K))
-            prob$bx = rbind( blx = c(0, -Inf, -Inf),
-                             buc = rep(Inf, 3))
-
-        }else{
-            # variable order: t, lambda
-            prob$c = c(1,0)
-
-            A = rbind(
-                cbind(bd, -rep(1,K)),
-                cbind(bd, rep(1,K))
-            )
-            prob$A = as(A, "CsparseMatrix")
-            prob$bc = rbind( blc = c(B, -B) ,
-                             buc = rep(Inf, 2*K))
-            prob$bx = rbind( blx = c(0, -Inf),
-                             buc = rep(Inf, 2))
-        }
-
-        mosek.out = mosek(prob, opts = list(verbose = 0))
-        tau.star = mosek.out$sol$itr$xx[1]
-    } else if (solver == "CVXR") {
-        if(intercept){
-
-            v = Variable(3)
-            obj = v[1]
-            constr = list(cbind(bd, -t(X)%*%rep(1,N), -rep(1,K))%*%v >= B,
-                          cbind(bd, t(X)%*%rep(1,N), rep(1,K))%*%v >= -B)
-            prob = Problem(Minimize(obj), constraints = constr)
-            result = solve(prob)
-            tau.star = result$getValue(v)[1]
-
-        }else{
-
-            v = Variable(2)
-            obj = v[1]
-            constr = list(cbind(bd,  -rep(1,K))%*%v >= B,
-                          cbind(bd,  rep(1,K))%*%v >= -B)
-            prob = Problem(Minimize(obj), constraints = constr)
-            result = solve(prob)
-            tau.star = result$getValue(v)[1]
-        }
-    }
-    return(tau.star)
-}
-

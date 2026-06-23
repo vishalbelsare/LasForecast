@@ -20,14 +20,11 @@ plot_coef(
 \item{coef_est}{estimated slope by m different methods, list of length m with each element n-by-p matrix\cr
 names of list well defined}
 
-\item{dates}{Date vector of class "Date". \cr}
+\item{dates}{Date vector of class "Date".}
 
-\item{pt_num}{Number date points (pt_num + 1) wanted on the x-axis
-Use lubridate and zoo to transfer original date vector to "Date" class}
+\item{pt_num}{Number date points (pt_num + 1) wanted on the x-axis}
 
-\item{col_vec}{A vector indicates colors of different trends. \cr
-e.g.:  c("#D8DBE2", "#F46B7B", "#518DE8", "#FFBC42" )\cr
-If NULL, use ggplot default.}
+\item{col_vec}{A vector indicates colors of different trends.}
 
 \item{line_size}{line size for each trend}
 
@@ -36,21 +33,12 @@ If NULL, use ggplot default.}
 \item{xlab}{x-axis label}
 
 \item{ylab}{y-axis label}
+
+\item{num_col}{number of columns in facet wrap}
 }
 \value{
 A ggplot output
 }
 \description{
 Coefficient plot
-}
-\examples{
-data("forecast_result")
-data("raw_data_h1")
-D <- raw_data_h1[!is.na(raw_data_h1$LongReturn), ]
-dates <- zoo::as.Date.yearmon(D$yyyymm[-(1:180)])
-
-coef_est <- list(lasso = forecast_result$Lasso$beta_hat[, 1:6],
-                 alasso = forecast_result$ALasso$beta_hat[, 1:6])
-plot_coef(coef_est, dates)
-
 }

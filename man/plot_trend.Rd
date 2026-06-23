@@ -44,16 +44,3 @@ A ggplot output
 \description{
 Trend plot
 }
-\examples{
-data("forecast_result")
-data("raw_data_h1")
-D <- raw_data_h1[!is.na(raw_data_h1$LongReturn), ]
-dates <- zoo::as.Date.yearmon(D$yyyymm[-(1:180)])
-y0 <- forecast_result$y[-(1:180)]
-y_hat <-cbind(forecast_result$Lasso$y_hat,
-              forecast_result$Lasso_Std$y_hat,
-              forecast_result$ALasso$y_hat)
-colnames(y_hat) <- c("lasso", "lasso_std", "alasso")
-plot_trend(y0, y_hat, dates)
-
-}
